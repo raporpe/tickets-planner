@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Working on the **Bing API upgrade** epic (#10459410) and the **Security Vulnerabilities** epic (#10495923) under the **C2 Work** hierarchy in the **SAN SA** project. Most recent work: created "Security Vulnerabilities" epic, moved WebPush dashboard task under it.
+Working on the **Bing API upgrade** epic (#10459410) and the **Security Vulnerabilities** epic (#10495923) under the **C2 Work** hierarchy in the **SAN SA** project. Most recent work: created "Security Vulnerabilities" epic, moved WebPush dashboard task under it. Ongoing VisualSearch/ApiInvoker diagnostic work under C3 epic #10681024 (latest: test3visualsearch endpoint #10914016).
 
 ## Work Item Hierarchy
 
@@ -83,6 +83,16 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Project ID**: `2579b442-0817-40f1-8ec8-19e6fb5794c6`
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **#10442031 is a User Story** (not a Task as entities.md previously had) — "[BE] New Sapphire Proxy API", parent Epic #10459410.
+
+## Last Actions (2026-07-10)
+
+1. Created Task #10914016 "Add test3visualsearch diagnostic endpoint (MM-style ApiInvoker call)": parent Epic #10681024 (Bing API upgrade - C3 work), Closed, Raul, iteration 2026.03, tags `20260706; backend`, P2
+2. PR #6889085 (snrcode, Bing_UX, merged 2026-07-10) linked as artifact link
+3. test3visualsearch mirrors MultimediaCustomApiController.HandleCustomApiRequest/HandleApiResponse; built directly from IApiInvoker (not IUpstreamInvoker wrapper); isolated Test3VisualSearchService; diagnostic-only, production /visualsearch untouched
+4. Added Related links to #10837557 (testvisualsearch diagnostic endpoint), #10902822 (troubleshoot VisualSearch via ApiInvoker), #10775149 (ApiInvoker bug evidence), #10460173 (Monitor Bing API migration and new proxy quality story)
+5. Week of Mon 2026-07-06 uses tag `20260706` (same tag as 07-08 session — no new weekly tag yet)
+6. Note: az CLI needed `az login` + azure-devops extension; PR artifact links require REST PATCH (relations/-, rel=ArtifactLink, attributes.name="Pull Request") since `relation add` can't set the link name
+7. Updated memory files
 
 ## Last Actions (2026-07-08)
 

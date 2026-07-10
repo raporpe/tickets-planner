@@ -161,6 +161,7 @@ Auto-populated knowledge base of ticket management entities.
 | 10902822 | Task | Troubleshoot VisualSearch API unreliability via ApiInvoker | 10681024 | SAN SA | Active | P1; Assigned: Raul Portugues; iteration 2026.03; Tags: 20260706, backend; ongoing troubleshooting of unreliable VisualSearch upstream via ApiInvoker; Related: 10775149, 10837557, 10703212 |
 | 10902859 | Task | Investigate wrong temperature unit in weather notifications (IcM 826588822) | 10465721 | SAN SA | Active | P1; Assigned: Raul Portugues; iteration 2026.03; Tags: 20260706, backend; IcM 826588822 Sev 2; Celsius/Fahrenheit mismatch in weather notifs despite correct prefs |
 | 10908349 | Task | Assess complexity and request security group permissions for IcM 831050152 | 10465721 | SAN SA | Active | P2; Assigned: Raul Portugues; iteration 2026.03; Tags: 20260706, backend; IcM 831050152; need security group permissions to review dashboard |
+| 10914016 | Task | Add test3visualsearch diagnostic endpoint (MM-style ApiInvoker call) | 10681024 | SAN SA | Closed | P2; Assigned: Raul Portugues; iteration 2026.03; Tags: 20260706, backend; PR #6889085 (snrcode, Bing_UX); test3visualsearch mirrors MM HandleCustomApiRequest/HandleApiResponse via IApiInvoker; isolated Test3VisualSearchService; Related: 10837557, 10902822, 10775149, 10460173 |
 
 ## People
 
