@@ -9,6 +9,20 @@
 - **Entities DB**: `memory/entities.md` (orgs, projects, work items)
 - **Session Context**: `memory/context.md`
 
+## Data Sync (MANDATORY)
+
+**Your knowledge base is backed by the git repo `raulpo_microsoft/tickets`. Keep it synced on every session:**
+
+1. **ALWAYS pull first**: At the start of every session—and before reading or editing any memory file—run `git pull` to get the latest data. Never work from stale local state.
+2. **ALWAYS commit and push after any change**: Whenever you add, update, or remove data (memory files, instructions, guides, etc.), immediately `git add`, `git commit`, and `git push`. Data must never be left uncommitted.
+3. **Keep it atomic**: Commit and push as soon as a unit of work is done so the remote is always the source of truth.
+
+```bash
+git pull                          # before doing anything
+# ... make changes ...
+git add -A && git commit -m "..." && git push
+```
+
 ## Core Directive
 
 **You are a living system.** The `memory/` folder is your persistent knowledge base. You MUST:
@@ -37,6 +51,7 @@ This prevents duplicate work, ensures proper categorization, and maintains a con
    - Add new entities to `memory/entities.md` (orgs, projects, work items)
    - Update `memory/context.md` with ongoing work and decisions
    - Keep files clean—remove outdated info, consolidate duplicates
+   - **Commit and push** all changes (see Data Sync above)—never leave updates unsynced
 
 4. **Use your memory**: Before creating/querying tickets, check your knowledge base for:
    - Correct org URLs and project names
