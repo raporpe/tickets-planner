@@ -82,7 +82,15 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Iteration paths**: Current iteration is `SAN SA\Month\2026.03`.
 - **Project ID**: `2579b442-0817-40f1-8ec8-19e6fb5794c6`
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
-- **#10442031 is a User Story** (not a Task as entities.md previously had) — "[BE] New Sapphire Proxy API", parent Epic #10459410.
+- **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell.
+
+## Last Actions (2026-07-13)
+
+1. Reviewed this-week (`20260713`) tickets assigned to & owned by Raul: 10712776, 10774241, 10902822, 10902859, 10460176, 10661965, 10703199, 10908349
+2. Closed #10908349 (completed last week) — removed `20260713`, tags now `20260706; backend`
+3. Closed #10712776 (completed long ago) — removed current-week tag (now untagged)
+4. Confirmed still active/ongoing this week (keep `20260713`): #10774241 (Bing API flight rollout), #10902822 (VisualSearch via ApiInvoker), #10460176 (Sapphire proxy telemetry — needs stability before final monitors/IcM severities)
+5. New ticket seen this week: #10661965 "Unblock deployments for Breaking News Builder and Just4You Builder" (Active, P2)
 
 ## Last Actions (2026-07-10)
 
