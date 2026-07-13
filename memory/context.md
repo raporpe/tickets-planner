@@ -90,6 +90,7 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 2. Closed #10908349 (completed last week) — removed `20260713`, tags now `20260706; backend`
 3. Closed #10712776 (completed long ago) — removed current-week tag (now untagged)
 3b. Closed #10661965 "Unblock deployments for Breaking News Builder and Just4You Builder" (completed long ago, created 2026-04-30) — removed `20260713` (now untagged); parent Operational Fixes #10465721; cowork with Nicolas; fixed 6mo-stale BNB/J4Y pipelines, direct-to-prod deploy, /broadcast tracing + secret auth, log reduction; Related 10466092
+3c. Closed #10703199 "Set up Bicep infra deployment pipeline for WorldCup Notifications" (completed weeks ago) — removed `20260713` (now untagged); parent Notifications #10459543; PR #6687977
 4. Confirmed still active/ongoing this week (keep `20260713`): #10774241 (Bing API flight rollout), #10902822 (VisualSearch via ApiInvoker), #10460176 (Sapphire proxy telemetry — needs stability before final monitors/IcM severities)
 5. New ticket seen this week: #10661965 "Unblock deployments for Breaking News Builder and Just4You Builder" (Active, P2)
 
