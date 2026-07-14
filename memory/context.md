@@ -84,6 +84,11 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell.
 
+## Last Actions (2026-07-14)
+
+1. Searched ADO (SAN SA) + memory for "recommendation platform investigation" / "sageprobe" — no existing ticket found (title search 0 results; description matches all noise; not in entities.md).
+2. Created Task #10928976 "[Investigation] Leverage MSN personalization platform (SageProbe / RecoProbe++) for feed & notifications relevance": **C4 work**, parent Epic #10899475 (Personalization & Notifications → C4 Work #10898840), Active, Raul (owner), iteration 2026.03, tags `20260713; backend`, P2. Investigation into MSN's end-to-end personalization stack — interest-signal collection (incl. Windows), news categorization + quality scores, Reco service matching. Probing tools: SageProbe Profile Lookup (per-ANID interest profile), RecoProbe++ (RecoAPI debugger; per-article matching scores, 1000+ scores/article-user, lat/long tuning, multiple sources incl. Copilot feed). Goal: audit ANID/MUID signals we send, compare their feed vs ours, find easy relevance wins, explore partnering with the personalization org. cc Romain Beget, Nicolas Lattuada, Marina Sauca Ortiz, Jiarui Gui. Related: #10921969.
+
 ## Last Actions (2026-07-13)
 
 1. Reviewed this-week (`20260713`) tickets assigned to & owned by Raul: 10712776, 10774241, 10902822, 10902859, 10460176, 10661965, 10703199, 10908349

@@ -163,6 +163,7 @@ Auto-populated knowledge base of ticket management entities.
 | 10908349 | Task | Assess complexity and request security group permissions for IcM 831050152 | 10465721 | SAN SA | Closed | P2; Assigned: Raul Portugues; iteration 2026.03; Tags: 20260706, backend; IcM 831050152; need security group permissions to review dashboard |
 | 10661965 | Task | Unblock deployments for Breaking News Builder and Just4You Builder | 10465721 | SAN SA | Closed | P2; Assigned/Created: Raul Portugues; iteration 2026.03; created 2026-04-30; cowork with Nicolas Lattuada; fixed 6mo-stale deploy pipelines (BNB + J4Y), deployed direct to prod, added /broadcast tracing + secret auth, reduced logs; Related: 10466092 |
 | 10921969 | Task | Monitor notification volume reduction experiment metrics and track progress | 10899497 | SAN SA | Active | P2; Assigned/Created: Raul Portugues; iteration 2026.03; Tags: 20260713, backend; C4 work; monitor daily-cap experiment (JFY 3/day, BN 1/day, TopStory 2/day, pt-br), volume vs baseline + OS opt-out, report progress; Related: 10779009, 10807151, 10807152, 10779012 |
+| 10928976 | Task | [Investigation] Leverage MSN personalization platform (SageProbe / RecoProbe++) for feed & notifications relevance | 10899475 | SAN SA | Active | P2; Assigned/Created: Raul Portugues; iteration 2026.03; Tags: 20260713, backend; C4 work; investigate MSN end-to-end personalization stack (interest signals, news categorization+quality scores, Reco service). Tools: SageProbe Profile Lookup (ANID interest profile), RecoProbe++ (RecoAPI debugger, per-article matching scores, lat/long tuning, Copilot feed source). Audit ANID/MUID signals we send, compare their feed vs ours, explore partnering w/ personalization org; cc Romain Beget, Nicolas Lattuada, Marina Sauca Ortiz, Jiarui Gui; Related: 10921969 |
 
 ### C4 Work hierarchy (Epic #10898840)
 
@@ -170,7 +171,7 @@ Auto-populated knowledge base of ticket management entities.
 |----|------|-------|--------|---------|--------|-------|
 | 10898840 | Epic | C4 Work | - | SAN SA | New | Top-level C4 planning epic; 4 child epics |
 | 10899468 | Epic | Core Product | 10898840 | SAN SA | New | C4 |
-| 10899475 | Epic | Personalization & Notifications | 10898840 | SAN SA | New | C4; features: 10899494, 10899495, 10899496, 10899497 |
+| 10899475 | Epic | Personalization & Notifications | 10898840 | SAN SA | New | C4; features: 10899494, 10899495, 10899496, 10899497; direct child Task: 10928976 (MSN personalization platform investigation) |
 | 10899477 | Epic | Fundamentals | 10898840 | SAN SA | New | C4 |
 | 10899479 | Epic | Growth | 10898840 | SAN SA | New | C4 |
 | 10899494 | Feature | Lightweight Bing app personalization pass | 10899475 | SAN SA | New | C4 |
