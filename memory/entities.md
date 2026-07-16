@@ -174,11 +174,13 @@ Auto-populated knowledge base of ticket management entities.
 | 10899475 | Epic | Personalization & Notifications | 10898840 | SAN SA | New | C4; features: 10899494, 10899495, 10899496, 10899497; direct child Task: 10928976 (MSN personalization platform investigation) |
 | 10899477 | Epic | Fundamentals | 10898840 | SAN SA | New | C4 |
 | 10899479 | Epic | Growth | 10898840 | SAN SA | New | C4 |
+| 10899503 | Feature | Quality & ICM bandwidth | 10899477 | SAN SA | New | C4; the "Notification ICM and Quality" workstream (under Fundamentals epic); children: 10941482 |
 | 10899494 | Feature | Lightweight Bing app personalization pass | 10899475 | SAN SA | New | C4 |
 | 10899495 | Feature | New notifications platform | 10899475 | SAN SA | New | C4 |
 | 10899496 | Feature | Personalized notifications | 10899475 | SAN SA | New | C4 |
 | 10899497 | Feature | Daily notifications limit cap | 10899475 | SAN SA | New | C4; home for notification volume reduction / daily-cap monitoring; children: 10921969 |
 | 10914016 | Task | Add test3visualsearch diagnostic endpoint (MM-style ApiInvoker call) | 10681024 | SAN SA | Closed | P2; Assigned: Raul Portugues; iteration 2026.03; Tags: 20260706, backend; PR #6889085 (snrcode, Bing_UX); test3visualsearch mirrors MM HandleCustomApiRequest/HandleApiResponse via IApiInvoker; isolated Test3VisualSearchService; Related: 10837557, 10902822, 10775149, 10460173 |
+| 10941482 | Task | Block weatherprecipitationalerts push notifications at web-push injection | 10899503 | SAN SA | Active | P2; Assigned/Created: Raul Portugues; iteration 2026.03; Tags: 20260713, backend; C4 work (Quality & ICM bandwidth workstream); documents completed SapphirePlatform change, PR #6916742 (branch feat/web-push-block-weather-precipitation); server-side denylist block for category weatherprecipitationalerts (AppNotificationCategoriesEnum) in web-push injection AppPushService.saveToQueue (BLOCKED_CATEGORIES, returns early pre-Service Bus); new telemetry event EventNameEnum.AppPushInjectionBlocked = apppush:injection:blocked; files apppush.service.ts, event.interface.ts, apppush.service.block.spec.ts; only injection service needs redeploy (shared sapphire-web-push image); Build [PME][Prod] web-push-ci / [Dev][WebPush] code-ci, Deploy [PME][Prod] web-push-injection-cd (prod approval) / [DEV][Test] web-push-injection-cd; status code-complete, PR open, not deployed; Related: 10899497, 10902859 |
 
 ## People
 
