@@ -86,6 +86,11 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 
 ## Last Actions (2026-08-12)
 
+1. Created two Active code-removal child Tasks under Round 1 deprecation #11035270 (Raul, iteration 2026.03, tags `20260810; security; SFI; cost`, P2; branches in SapphirePlatform repo (SAN SA) linked as artifact links, PRs pending):
+   - Task #11045523 "Remove deprecated Sapphire-Watchdog service" — branch `remove-watchdog` → main.
+   - Task #11045524 "Remove deprecated SuperApp-Community service" — branch `remove-community` → main.
+   Both were Round 1 deprecation targets; these reflect the code-level removals. Related to #11045487 (Sapphire Tools removal).
+
 1. Created Task #11045487 "Remove deprecated Sapphire Tools project (sapphire-android-update-provider)": **child of Round 2 deprecation #11035272**, Active, Raul, iteration 2026.03, tags `20260810; security; SFI; cost`, P2. PR #7005593 (SapphirePlatform repo, SAN SA project, branch `copilot/remove-sapphire-tools` → main) linked as artifact link. Removes the deprecated Sapphire Tools project (sapphire-android-update-provider) and all related code — the code-level piece of the Round 2 Sapphire-Tools target. Related: #11035270 (Round 1).
 
 1. Created Task #11045342 "Fix Sapphire suggestions entity thumbnail mapping (ContentUrl -> ThumbnailUrl)": **C4 work**, parent Feature #10899503 (Quality & ICM bandwidth), **Closed** (reflects completed work), Raul, iteration 2026.03, tags `20260810; backend`, P2. PR #7004414 (snrcode, Bing_UX, branch `users/raulpo/sapphire-suggestions-thumbnail` → main) linked as artifact link. `/sapphire/api/v1/suggestions` read entity thumbnail from `Image.ContentUrl` (never populated by v7 Suggestions API for suggestion entities) → thumbnailUrl always null; one-line fix reads `Image.ThumbnailUrl`. ContentUrl not a valid fallback (holds click-through/host page URL, not an image). Known limitation: two AutoSuggest v7 defects (MB.Enabled keyed on aspartner unresolved for loopback IApiInvoker; aggregator compares raw 'MB,AS' vs split 'MB' Type) drop the entity before Sapphire → not yet observable in prod; confirmed by diagnostic PR #7009927 (AutoSuggest owners, must land first). Merged regardless; 89 SuggestionsMapperTests pass. Related: #10964104 (autosuggest rich-metadata bug), #10656625 (Suggestions Part 5).
