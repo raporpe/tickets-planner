@@ -179,6 +179,9 @@ Auto-populated knowledge base of ticket management entities.
 | 10899477 | Epic | Fundamentals | 10898840 | SAN SA | New | C4 |
 | 10899479 | Epic | Growth | 10898840 | SAN SA | New | C4 |
 | 10899503 | Feature | Quality & ICM bandwidth | 10899477 | SAN SA | New | C4; the "Notification ICM and Quality" workstream (under Fundamentals epic); children: 10941482 |
+| 10899437 | Task | C4.10 -- Data platform discovery and onboarding | 10788883 | SAN SA | New | Area SAN SA\Scaffolding\Fundamental; iteration 2026.03; data-platform discovery/onboarding parent; children: 11044869 (Synapse analysis/deprecation), 11044871 (Magnetar learning) |
+| 11044869 | Task | Synapse Analytics analysis and deprecation in PME tenant | 10899437 | SAN SA | Active | P2; Assigned/Created: Raul Portugues; area SAN SA\Scaffolding\Fundamental; iteration 2026.03; Tags: 20260810, data-platform, SFI, cost. Inventory Synapse Analytics in PME tenant (incl. synapse-workspace RG, sub ace9ebfc-12ee-484d-9cf8-7b8bbe124d06), analyze usage/dependencies/owners, determine deprecate vs migrate, coordinate sign-off + decommission unused resources. Related: 11035272 (unused-services deprecation Round 2) |
+| 11044871 | Task | Magnetar: learn and understand current setup | 10899437 | SAN SA | Active | P2; Assigned/Created: Raul Portugues; area SAN SA\Scaffolding\Fundamental; iteration 2026.03; Tags: 20260810, data-platform. Map current Magnetar architecture/components/data flows/ownership, understand usage + dependencies, document findings to inform data-platform discovery/onboarding (C4.10) and future migration/deprecation decisions |
 | 10899494 | Feature | Lightweight Bing app personalization pass | 10899475 | SAN SA | New | C4 |
 | 10899495 | Feature | New notifications platform | 10899475 | SAN SA | New | C4 |
 | 10899496 | Feature | Personalized notifications | 10899475 | SAN SA | New | C4 |
