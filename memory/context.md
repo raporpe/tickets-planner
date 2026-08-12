@@ -86,7 +86,9 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 
 ## Last Actions (2026-08-12)
 
-1. Created two Active child Tasks under #10899437 "C4.10 -- Data platform discovery and onboarding" (area `SAN SA\Scaffolding\Fundamental`, iteration 2026.03, Raul, P2, tag `20260810`):
+1. Created Task #11045342 "Fix Sapphire suggestions entity thumbnail mapping (ContentUrl -> ThumbnailUrl)": **C4 work**, parent Feature #10899503 (Quality & ICM bandwidth), **Closed** (reflects completed work), Raul, iteration 2026.03, tags `20260810; backend`, P2. PR #7004414 (snrcode, Bing_UX, branch `users/raulpo/sapphire-suggestions-thumbnail` → main) linked as artifact link. `/sapphire/api/v1/suggestions` read entity thumbnail from `Image.ContentUrl` (never populated by v7 Suggestions API for suggestion entities) → thumbnailUrl always null; one-line fix reads `Image.ThumbnailUrl`. ContentUrl not a valid fallback (holds click-through/host page URL, not an image). Known limitation: two AutoSuggest v7 defects (MB.Enabled keyed on aspartner unresolved for loopback IApiInvoker; aggregator compares raw 'MB,AS' vs split 'MB' Type) drop the entity before Sapphire → not yet observable in prod; confirmed by diagnostic PR #7009927 (AutoSuggest owners, must land first). Merged regardless; 89 SuggestionsMapperTests pass. Related: #10964104 (autosuggest rich-metadata bug), #10656625 (Suggestions Part 5).
+
+2. Created two Active child Tasks under #10899437 "C4.10 -- Data platform discovery and onboarding" (area `SAN SA\Scaffolding\Fundamental`, iteration 2026.03, Raul, P2, tag `20260810`):
    - Task #11044869 "Synapse Analytics analysis and deprecation in PME tenant" — inventory Synapse in PME (incl. synapse-workspace RG, sub ace9ebfc-12ee-484d-9cf8-7b8bbe124d06), analyze usage/dependencies/owners, deprecate vs migrate, sign-off + decommission. Tags add `data-platform; SFI; cost`. Related: #11035272 (unused-services Round 2).
    - Task #11044871 "Magnetar: learn and understand current setup" — map Magnetar architecture/components/data flows/ownership, document findings to inform C4.10. Tag `data-platform`.
 
