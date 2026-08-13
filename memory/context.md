@@ -86,6 +86,8 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 
 ## Last Actions (2026-08-13)
 
+1. Created Task #11051230 "Deprecate and remove Notifications-CohortGenerationService": **child of Mythos-removal task #11050555**, Active, Raul, iteration 2026.03, tags `20260810; security; SFI; Mythos`, P2. PR #7019145 (Sapphire-Notifications-JustForYou repo, Bing_and_IPG project, branch `copilot/deprecate-cohort-generation-service` → main) linked as artifact link. Retires the CohortGenerationService + its deployment pipelines (maintenance mode since early 2025); the code removal is the concrete step that eliminates the /cohorts arbitrary-job-spec + KeyVault-secret vectors from bugs #10828530/#10828531. Related: #10828530, #10828531.
+
 1. Created Task #11050555 "Resolve Mythos vulns via deprecated-code removal (SAAMIT queue secrets + /cohorts Magnetar) - JustForYou": parent **Security Vulnerabilities** epic #10495923 (C2), Active, Raul, iteration 2026.03, tags `20260810; security; SFI; Mythos`, P2. Single work item covering two MAIMythosScan bugs in Sapphire-Notifications-JustForYou (AISPACE project): Bug #10828531 (KeyVault secrets copied into Azure Storage queue messages for every SAAMIT job) and Bug #10828530 (PUT /cohorts accepts arbitrary Magnetar job specs and hands them KeyVault secrets). Service is deprecated → both expected to resolve very fast: after checks confirm no live consumers, remove the code (SAAMIT queue-secret copy + /cohorts job-spec handling) rather than patch. Related: #10828531, #10828530.
 
 ## Last Actions (2026-08-12)
