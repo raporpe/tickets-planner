@@ -84,6 +84,10 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell. **`az rest` also needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** (the Azure DevOps AAD resource GUID) or it fails with "Can't derive appropriate Azure AD resource" → TF400813 Unauthorized. Pass the JSON-patch body via a temp file (`--body @path`) to avoid PowerShell quoting issues.
 
+## Last Actions (2026-08-13)
+
+1. Created Task #11050555 "Resolve Mythos vulns via deprecated-code removal (SAAMIT queue secrets + /cohorts Magnetar) - JustForYou": parent **Security Vulnerabilities** epic #10495923 (C2), Active, Raul, iteration 2026.03, tags `20260810; security; SFI; Mythos`, P2. Single work item covering two MAIMythosScan bugs in Sapphire-Notifications-JustForYou (AISPACE project): Bug #10828531 (KeyVault secrets copied into Azure Storage queue messages for every SAAMIT job) and Bug #10828530 (PUT /cohorts accepts arbitrary Magnetar job specs and hands them KeyVault secrets). Service is deprecated → both expected to resolve very fast: after checks confirm no live consumers, remove the code (SAAMIT queue-secret copy + /cohorts job-spec handling) rather than patch. Related: #10828531, #10828530.
+
 ## Last Actions (2026-08-12)
 
 1. Created two Active code-removal child Tasks under Round 1 deprecation #11035270 (Raul, iteration 2026.03, tags `20260810; security; SFI; cost`, P2; branches in SapphirePlatform repo (SAN SA) linked as artifact links, PRs pending):
