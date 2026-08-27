@@ -86,6 +86,8 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 
 ## Last Actions (2026-08-27)
 
+1. Created Task #11107623 "Remove deprecated Gaokao service": **child of Round 2 deprecation #11035272**, Active, Raul, iteration 2026.03, tags `20260824; security; SFI; cost`, P2. Remove the deprecated/unused Gaokao service + related code & Azure resources (confirm no live consumers/traffic, identify code/App Service/RG/pipelines, remove + decommission, rotate any secrets). Related: #11107260 (BingSearchTranslator removal).
+
 1. Created Task #11107260 "Remove dead BingSearchTranslator service": **child of Round 2 deprecation #11035272**, **Closed**, Raul, iteration 2026.03, tags `20260824; security; SFI; cost`, P2. PR #7060376 (SapphirePlatform repo, SAN SA project, branch `users/raulpo/remove-bingsearchtranslator` → main, **completed**) linked as artifact link. Removes the BingSearchTranslator service (App Service `bingsearchtranslator-eus-01-01`, RG `SuperApp-SearchSDK`) as dead code — only consumer was Sapphire Android International Search (gated by SapphireFeatureFlag.InternationalEnabled default=false, listed inactive), no traffic, route drift (/translatev2 vs implemented /translatev1). Deletes whole BingSearchTranslator/ folder incl. ADO pipelines; companion PR removes Android consumer. **Security follow-up**: deleted AzureTranslatorService.cs had a hardcoded Ocp-Apim-Subscription-Key that should be rotated/regenerated in Azure. Related: #11045487 (Sapphire Tools removal).
 
 ## Last Actions (2026-08-25)
