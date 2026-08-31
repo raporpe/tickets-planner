@@ -84,6 +84,11 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell. **`az rest` also needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** (the Azure DevOps AAD resource GUID) or it fails with "Can't derive appropriate Azure AD resource" → TF400813 Unauthorized. Pass the JSON-patch body via a temp file (`--body @path`) to avoid PowerShell quoting issues.
 
+## Last Actions (2026-08-31)
+
+1. Created Task #11119169 "[VoiceSearch][Backend] Support Gemma on VoiceSearch service creation (design, token broker, security)": parent **US #10681019** "Voice Search Service Migration" (Gemma), Active, Raul, iteration 2026.03, tags `20260831; backend; VoiceSearch`, P2. Reflects Raul's collaboration supporting Gemma on the new VoiceSearch backend service — design/architecture support + reviews across Azure Speech STT provisioning (F1 #11102076), Falcon token-machine service `/voice/speech-token` + App Attest (F2 #11102077), and monitoring/attack detection (F5 #11102078); pairing on scaffolding, token-broker pattern, secret handling (revoke leaked Azure Speech key). Discovered the VoiceSearch work item set under US #10681019 (parent Feature #10611479). Related: #11102076, #11102077, #11102078.
+   - Note: WIQL `CONTAINS` on Title kept timing out (VS402335); `CONTAINS WORDS` via `az rest` POST to /_apis/wit/wiql worked. Found VoiceSearch set via titles containing 'voice'/'TTS'.
+
 ## Last Actions (2026-08-27)
 
 1. Created Task #11107623 "Remove deprecated Gaokao service": **child of Round 2 deprecation #11035272**, Active, Raul, iteration 2026.03, tags `20260824; security; SFI; cost`, P2. Remove the deprecated/unused Gaokao service + related code & Azure resources (confirm no live consumers/traffic, identify code/App Service/RG/pipelines, remove + decommission, rotate any secrets). Related: #11107260 (BingSearchTranslator removal).
