@@ -84,6 +84,12 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell. **`az rest` also needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** (the Azure DevOps AAD resource GUID) or it fails with "Can't derive appropriate Azure AD resource" → TF400813 Unauthorized. Pass the JSON-patch body via a temp file (`--body @path`) to avoid PowerShell quoting issues.
 
+## Last Actions (2026-09-03)
+
+1. Created two data-platform documentation Tasks under #10899437 (C4.10 Data platform discovery and onboarding), area `SAN SA\Scaffolding\Fundamental`, Active, Raul, iteration 2026.03, tags `20260831; data-platform; Documentation; Proxima`, P2:
+   - Task #11135333 "Migrate wiki from ScaffoldingWiki to new Proxima GitHub" — move wiki content from ScaffoldingWiki (ADO) to the new Proxima GitHub (inventory, target setup, migrate content+nav, fix links, validate, retire old). Related: #11066997, #11076689, #11135334.
+   - Task #11135334 "Integrate GitHub Proxima into eng.ms docs" — wire Proxima GitHub docs into the eng.ms documentation surface. Related: #11135333.
+
 ## Last Actions (2026-08-31)
 
 1. Created Task #11120407 "Request CME access to Mooncake cloud (IcM 860191313)": parent **Security Vulnerabilities** epic #10495923 (C2), Active, Raul, iteration 2026.03, tags `20260831; security; SFI; access`, P2. Tracking ticket for requesting/obtaining CME (China/Mooncake sovereign cloud) access via IcM 860191313 and the time spent managing it (request, approvals/eligibility, IcM follow-up, onboarding). IcM: 860191313.
