@@ -84,6 +84,11 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell. **`az rest` also needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** (the Azure DevOps AAD resource GUID) or it fails with "Can't derive appropriate Azure AD resource" → TF400813 Unauthorized. Pass the JSON-patch body via a temp file (`--body @path`) to avoid PowerShell quoting issues.
 
+## Last Actions (2026-09-23)
+
+1. Created Task #11228954 "Add Sapphire nearby events API (/eventsnearme)": **C4 work**, parent Feature #10899503 (Quality & ICM bandwidth), Active, Raul, iteration 2026.03, tags `20260921; backend`, P2. PR #7167623 (snrcode, Bing_UX, branch `users/raulpo/sapphire-events-near-me` → main) linked as artifact link. New Sapphire proxy endpoint GET /sapphire/api/v1/eventsnearme (required cc/setlang/lat/long, no query); JSON array with id/date/location/title/action per event; calls /api/v7/events/search via IUpstreamInvoker+IApiInvoker (fixed query 'events around me', coords in X-Search-Location, existing WebSearchAppId). 86 tests pass. Rollout prereq: app ID needs EventsSearch access granted separately (else 502). Related: #10657196 (Places Autosuggest), #10442031 (New Sapphire Proxy API US).
+   - Note on cycle/week: team parks all work in iteration `SAN SA\Month\2026.03` (iteration tree only defined through 2026.06; used as a standing bucket). Week tags are cumulative per work item; current week tag = `20260921` (Mon 2026-09-21). New tickets get the current week tag only.
+
 ## Last Actions (2026-09-03)
 
 1. Created two data-platform documentation Tasks under #10899437 (C4.10 Data platform discovery and onboarding), area `SAN SA\Scaffolding\Fundamental`, Active, Raul, iteration 2026.03, tags `20260831; data-platform; Documentation; Proxima`, P2:
