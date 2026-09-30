@@ -84,6 +84,15 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell. **`az rest` also needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** (the Azure DevOps AAD resource GUID) or it fails with "Can't derive appropriate Azure AD resource" → TF400813 Unauthorized. Pass the JSON-patch body via a temp file (`--body @path`) to avoid PowerShell quoting issues.
 
+## Last Actions (2026-09-30)
+
+1. Audited Raul's recently closed SAN SA work against the Bing Mobile Apps Team kanban configuration (area `SAN SA` including children; standing iteration `SAN SA\Month\2026.03`).
+2. Classified closed IcM repair Task #11254816 "Simplify contact points with the team and advertise a single email for notifications": parent **Operational Fixes** epic #10465721, iteration 2026.03, tags `20260928; incident; Incident Repair Item; Notifications`, P2.
+3. Added missing current-work classification to closed Tasks #10755068 and #10755538 under C3 Operational Fixes #10727656:
+   - #10755068 "Investigate Android miniapp telemetry gap — no errors reported during Weather Maps outage": tags `20260928; Android; incident; Incident Repair Item`, P2; PRs #7181749 and #7184867.
+   - #10755538 "Audit all miniapp API calls — verify bridge usage and document exceptions": tags `20260928; incident; Incident Repair Item; miniApp`, P2.
+4. Left auto-generated MAI security reviewer Bug #10723291 unchanged because its ownership/classification is unclear.
+
 ## Last Actions (2026-09-29)
 
 1. Created Task #11259627 "Fix PNP delete to use DELETE verb instead of PUT (stops ~7.4M/day 404s)": parent **Operational Fixes** epic #10465721 (C2 keep-the-lights-on), Active, Raul, iteration 2026.03, tags `20260928; backend; Notifications`, P2. PR #7106339 (Sapphire repo, SAN SA project, branch `raulpo/fix-pnp-delete-verb` → master) linked as artifact link. PNPRegistrar.deleteAllRegistrations issued a 2-segment PUT that matched no backend route (only @Put 3-seg + @Delete 2-seg exist) → 404, delete never executed → ~7.4M 404s/day at Front Door edge (AppexAndroid UA). One-line fix: verb PUT→DELETE in the non-atomic default branch (URL/atomic-POST unchanged). Caveat: converts no-op deletes into real ANH delete + legacy-scan (mostly redundant for same-token re-reg via deterministic installationId sha256(app:token)); possible follow-up to skip delete for same-token refresh.
