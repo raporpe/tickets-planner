@@ -34,6 +34,8 @@ Auto-populated knowledge base of ticket management entities.
 | 10399351 | User Story | New endpoints for bing API calls | 10377255 | SAN SA | Active | Assigned: Gemma Fornons Sera |
 | 10406404 | Task | Document missing Bing API App ID B5DB19752CCFB2A8DBC11E7390600F78C2B22A56 | 10377293 | SAN SA | New | Assigned: Raul Portugues; 10th BingAPI AppID found in iOS TrendingSearch; Related: 10399205 |
 | 10372598 | Feature | SFI | 10317577 | SAN SA | New | SFI security tracking feature; iteration SAN SA\Month\2026.01 |
+| 10621033 | User Story | Sites With PublicAccess | 10372598 | SAN SA | New | P2; area SAN SA\Scaffolding\Fundamental; iteration 2026.03; SFI KPI tracking for App Services with public access. Snapshot 2026-09-22: 285 open; by 2026-09-29, 224 solved and 61 remaining. Child: 11265464 and individual PME-practice remediation tasks |
+| 11265464 | Task | [SFI] Review and close public access for 100 App Services missing NetworkAccess:Public | 10621033 | SAN SA | Closed | P1; Assigned/Created: Raul Portugues; area SAN SA\Scaffolding\Fundamental; iteration 2026.03; Tags: 20260928, backend, public-access, security, SFI. Completed review/remediation of approximately 100 App Services missing the `NetworkAccess:Public` Azure resource tag, a convention Raul introduced to mark services intentionally allowed to remain public. Related: 11095072, 11183950, 11183958 |
 | 10372775 | User Story | Android CFS config | 10372598 | SAN SA | WIP | Assigned: George Marques |
 | 10373713 | User Story | Move Binary Files to Git LFS | 10372598 | SAN SA | Active | Assigned: Nicolas Lattuada; Tag: Common Infrastructure, Status:Red |
 | 10373714 | User Story | NGP Untagged Assets by Service | 10372598 | SAN SA | New | Tag: Global and Trusted, Status:Red |

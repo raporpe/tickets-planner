@@ -92,6 +92,7 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
    - #10755068 "Investigate Android miniapp telemetry gap — no errors reported during Weather Maps outage": tags `20260928; Android; incident; Incident Repair Item`, P2; PRs #7181749 and #7184867.
    - #10755538 "Audit all miniapp API calls — verify bridge usage and document exceptions": tags `20260928; incident; Incident Repair Item; miniApp`, P2.
 4. Left auto-generated MAI security reviewer Bug #10723291 unchanged because its ownership/classification is unclear.
+5. Created and closed Task #11265464 "[SFI] Review and close public access for 100 App Services missing NetworkAccess:Public": parent SFI User Story #10621033 "Sites With PublicAccess", Raul, area `SAN SA\Scaffolding\Fundamental`, iteration 2026.03, tags `20260928; backend; public-access; security; SFI`, P1. The affected population was approximately 100 App Services without the `NetworkAccess:Public` Azure resource tag. Raul created this resource-tag convention previously to identify services intentionally allowed to remain public. The task documents reviewing the untagged services, preserving public access only where justified, and restricting the rest. Related: #11095072 (prior 200+ App Services incident review), #11183950 and #11183958 (BingViz public-access remediation items).
 
 ## Last Actions (2026-09-29)
 
