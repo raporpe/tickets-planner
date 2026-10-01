@@ -87,6 +87,7 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 ## Last Actions (2026-10-01)
 
 1. Created active Bug #11272866 "[Sapphire API] Allow Events Near Me cc/setlang mismatch through anti-bot checks": parent Feature #11260511 "Discovery Feed: Expand beyond current verticals", Raul, iteration 2026.03, tags `20260928; antibot; backend; EventsNearMe; SapphireAPI`, P2 / Sev 3. Valid `/sapphire/api/v1/eventsnearme` requests are blocked when `cc` or `setlang` differs from the IP-derived country. The fix must add a narrowly scoped anti-bot exception for this endpoint without weakening protection for other Sapphire API traffic. Related: #11228954 (endpoint implementation), #11265472 (V7 Search event-entity fix).
+2. Created active Bug #11273273 "Microsoft Rewards redemption failure on Mobile Bing App in China (PIR 1552079)": parent Operational Fixes #10465721, Raul, iteration 2026.03, tags `20260928; China; incident; Mobile; PIR; Rewards`, P1 / Sev 2. Tracks the Bing Exp incident reviewed Tuesday 2026-09-29 at 8:00 AM, covering Microsoft Rewards redemption failures across the China market. Investigation includes impact, timeline, root cause, recovery validation, detection gaps, and repair items from PIR 1552079. The originating IcM incident ID still needs to be linked when available.
 
 ## Last Actions (2026-09-30)
 
