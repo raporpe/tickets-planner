@@ -84,6 +84,10 @@ Note: Epic #10459410 is a **separate epic** from Feature #10377255. Tasks #10399
 - **Epic #10459410 core metric**: "Token brokers no longer in use" — directly addressed by User Story #10460157.
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Also build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`) — inline `$id?api-version` mangles in PowerShell. **`az rest` also needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** (the Azure DevOps AAD resource GUID) or it fails with "Can't derive appropriate Azure AD resource" → TF400813 Unauthorized. Pass the JSON-patch body via a temp file (`--body @path`) to avoid PowerShell quoting issues.
 
+## Last Actions (2026-10-01)
+
+1. Created active Bug #11272866 "[Sapphire API] Allow Events Near Me cc/setlang mismatch through anti-bot checks": parent Feature #11260511 "Discovery Feed: Expand beyond current verticals", Raul, iteration 2026.03, tags `20260928; antibot; backend; EventsNearMe; SapphireAPI`, P2 / Sev 3. Valid `/sapphire/api/v1/eventsnearme` requests are blocked when `cc` or `setlang` differs from the IP-derived country. The fix must add a narrowly scoped anti-bot exception for this endpoint without weakening protection for other Sapphire API traffic. Related: #11228954 (endpoint implementation), #11265472 (V7 Search event-entity fix).
+
 ## Last Actions (2026-09-30)
 
 1. Audited Raul's recently closed SAN SA work against the Bing Mobile Apps Team kanban configuration (area `SAN SA` including children; standing iteration `SAN SA\Month\2026.03`).
