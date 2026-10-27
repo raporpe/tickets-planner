@@ -6,8 +6,13 @@
 
 - **Azure DevOps Org**: `https://msasg.visualstudio.com`
 - **CLI Guide**: `memory/azure-devops-cli-guide.md`
-- **Entities DB**: `memory/entities.md` (orgs, projects, work items)
-- **Session Context**: `memory/context.md`
+- **Session Context**: `memory/context.md` (stable config + conventions only)
+
+## Source of Truth (MANDATORY)
+
+**The Azure DevOps API is the only source of truth for tickets.** Never cache or store ticket data locally — no work item IDs/titles lists, hierarchies, parents, states, iterations, tags, board columns, owners, or action logs of ticket changes. It always goes stale. Before any decision (duplicates, parent, state, board placement), query the API live (WIQL, `az boards`, `az rest`).
+
+Memory may only contain stable, non-ticket knowledge: org/project/team/board identifiers, conventions, methodology, and tooling learnings.
 
 ## Data Sync (MANDATORY)
 
@@ -22,6 +27,23 @@ git pull                          # before doing anything
 # ... make changes ...
 git add -A && git commit -m "..." && git push
 ```
+
+## Board Methodology (MANDATORY)
+
+Two boards, two purposes. Every ticket must be visible on both levels.
+
+| Level | Board | Shows | Purpose |
+|---|---|---|---|
+| **Feature** | Features kanban — https://aka.ms/sa-kanban (Bing Mobile Apps Team → Features) | Feature cards only | Visibility of the **big ongoing initiatives** the team is working on |
+| **Task** | Weekly Taskboard — [2026.03 Taskboard](https://msasg.visualstudio.com/SAN%20SA/_sprints/taskboard/Bing%20Mobile%20Apps%20Team/SAN%20SA/Month/2026.03) | Tasks/Bugs in the current iteration, filtered by weekly tag | The **real, concrete work** done each week |
+
+Rules:
+
+1. **Feature = big, ongoing initiative.** It must sit on the Features kanban (area under `SAN SA`, iteration under `SAN SA\Month`) in the column that matches reality (e.g. `Work in Progress` → In Development while its Tasks are active) and in a swimlane (Core Experience & Quality / Growth / Others). Never use cycle buckets (C2/C3/C4/C5 Work, IcM, OKR Epics) as the parent of real work.
+2. **Task = real work.** Every piece of concrete work (PR, investigation, rollout, fix) is a **Task** (or Bug) that rolls up to a board Feature. A User Story in between is optional — use one only when it already exists or groups several Tasks meaningfully.
+3. **Weekly visibility.** Active Tasks go in the current iteration (`SAN SA\Month\2026.03`) with the current weekly tag (Monday date, `YYYYMMDD`) so they appear on the weekly Taskboard. User Stories and Features do **not** appear on the Taskboard — if a Story represents real work, create a child Task for it.
+4. **No orphans.** Any open Task/Story/Bug whose parent chain does not reach a board Feature must be re-parented under the right Feature (or a new Feature proposed to the user).
+5. **Keep Features honest.** When creating/activating Tasks, check the parent Feature's column; flag Features that are in New with active Tasks, or in progress with no open children.
 
 ## Core Directive
 
@@ -41,22 +63,11 @@ This prevents duplicate work, ensures proper categorization, and maintains a con
 
 1. **On session start**: Use the Quick Context above. Only read memory files when needed for a specific task.
 
-2. **Auto-learn from every interaction**: When working with tickets, automatically extract and store:
-   - Organizations and their URLs
-   - Projects and their area/iteration paths
-   - Work item IDs with context (what they are, their parent/child relationships)
-   - Patterns (common workflows, team conventions)
-   
-3. **Update knowledge files**: After each session involving tickets:
-   - Add new entities to `memory/entities.md` (orgs, projects, work items)
-   - Update `memory/context.md` with ongoing work and decisions
-   - Keep files clean—remove outdated info, consolidate duplicates
-   - **Commit and push** all changes (see Data Sync above)—never leave updates unsynced
+2. **Learn only stable knowledge**: Record new conventions, team/board configuration, methodology changes, and tooling learnings in `memory/context.md`. **Do not** record work items or ticket changes (see Source of Truth).
 
-4. **Use your memory**: Before creating/querying tickets, check your knowledge base for:
-   - Correct org URLs and project names
-   - Existing work items that may be related
-   - Area/iteration paths used previously
+3. **Keep knowledge files clean**: Remove outdated info, consolidate duplicates, and **commit and push** all changes (see Data Sync above).
+
+4. **Use memory for configuration, the API for tickets**: Use memory for org/project/team/board IDs and conventions; find existing and related work items by querying the API.
 
 ## Purpose
 
