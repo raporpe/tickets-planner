@@ -35,15 +35,20 @@ Two boards, two purposes. Every ticket must be visible on both levels.
 | Level | Board | Shows | Purpose |
 |---|---|---|---|
 | **Feature** | Features kanban — https://aka.ms/sa-kanban (Bing Mobile Apps Team → Features) | Feature cards only | Visibility of the **big ongoing initiatives** the team is working on |
-| **Task** | Weekly Taskboard — [2026.03 Taskboard](https://msasg.visualstudio.com/SAN%20SA/_sprints/taskboard/Bing%20Mobile%20Apps%20Team/SAN%20SA/Month/2026.03) | Tasks/Bugs in the current iteration, filtered by weekly tag | The **real, concrete work** done each week |
+| **Task** | Sprint Taskboard — `https://msasg.visualstudio.com/SAN%20SA/_sprints/taskboard/Bing%20Mobile%20Apps%20Team/SAN%20SA/Sprint/<current sprint>` | Tasks/Bugs in the current 2-week sprint iteration | The **real, concrete work** done in the sprint (daily stand-ups) |
+| Backlog | [Stories backlog](https://msasg.visualstudio.com/SAN%20SA/_backlogs/backlog/Bing%20Mobile%20Apps%20Team/Stories) | All items under `SAN SA\Sprint` | Sprint planning |
 
 Rules:
 
-1. **Feature = big, ongoing initiative.** It must sit on the Features kanban (area under `SAN SA`, iteration under `SAN SA\Month`) in the column that matches reality (e.g. `Work in Progress` → In Development while its Tasks are active) and in a swimlane (Core Experience & Quality / Growth / Others). Never use cycle buckets (C2/C3/C4/C5 Work, IcM, OKR Epics) as the parent of real work.
+1. **Feature = big, ongoing initiative.** It must sit on the Features kanban (area under `SAN SA`, iteration under `SAN SA\Sprint`) in the column that matches reality (e.g. `Work in Progress` → In Development while its Tasks are active) and in a swimlane (Core Experience & Quality / Growth / Others). Never use cycle buckets (C2/C3/C4/C5 Work, IcM, OKR Epics) as the parent of real work.
 2. **Task = real work.** Every piece of concrete work (PR, investigation, rollout, fix) is a **Task** (or Bug) that rolls up to a board Feature. A User Story in between is optional — use one only when it already exists or groups several Tasks meaningfully.
-3. **Weekly visibility.** Active Tasks go in the current iteration (`SAN SA\Month\2026.03`) with the current weekly tag (Monday date, `YYYYMMDD`) so they appear on the weekly Taskboard. User Stories and Features do **not** appear on the Taskboard — if a Story represents real work, create a child Task for it.
-4. **No orphans.** Any open Task/Story/Bug whose parent chain does not reach a board Feature must be re-parented under the right Feature (or a new Feature proposed to the user).
-5. **Keep Features honest.** When creating/activating Tasks, check the parent Feature's column; flag Features that are in New with active Tasks, or in progress with no open children.
+3. **Sprint visibility (2-week sprints since 2026-11-02).** Iterations live under `SAN SA\Sprint` (`Sprint\2026.01`, `Sprint\2026.02`, …); `SAN SA\Month` is retired. Never hardcode the sprint — resolve it live via `GET {org}/SAN%20SA/4271a5b2-919a-44ce-a87d-ef4c4d823a21/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`.
+   - New backlog work → iteration `SAN SA\Sprint`.
+   - Work being done this sprint (Active, or closed now) → current sprint iteration so it shows on the Taskboard. At sprint planning, move items to the upcoming sprint.
+   - User Stories and Features do **not** appear on the Taskboard — if a Story represents real work, create a child Task for it.
+4. **Tags on every new Story/Task.** Current cycle tag (`FY26 C5` now) **and** a platform tag (`iOS`, `Android`, `Backend`, `MiniApps`, …), plus topic tags. Keep the weekly tag (Monday date, `YYYYMMDD`) on Tasks worked that week as Raul's personal filter.
+5. **No orphans.** Any open Task/Story/Bug whose parent chain does not reach a board Feature must be re-parented under the right Feature (or a new Feature proposed to the user).
+6. **Keep Features honest.** When creating/activating Tasks, check the parent Feature's column; flag Features that are in New with active Tasks, or in progress with no open children.
 
 ## Core Directive
 

@@ -8,9 +8,10 @@
 |---|---|
 | Organization | `https://msasg.visualstudio.com` (also `https://dev.azure.com/msasg`) |
 | Project | `SAN SA` — id `2579b442-0817-40f1-8ec8-19e6fb5794c6` |
-| Team | Bing Mobile Apps Team — id `4271a5b2-919a-44ce-a87d-ef4c4d823a21`; area `SAN SA` incl. children; backlog iteration `SAN SA\Month` |
+| Team | Bing Mobile Apps Team — id `4271a5b2-919a-44ce-a87d-ef4c4d823a21`; area `SAN SA` incl. children; backlog iteration `SAN SA\Sprint` (2-week sprints since 2026-11-02; `SAN SA\Month` retired) |
 | Features kanban | https://aka.ms/sa-kanban — board id `01c36bdd-9c27-4a78-92c2-3e4e28bc2967`; column field `WEF_9DB34C125FE94EC5BED3AB6B1B826B4C_Kanban.Column`, lane field `WEF_9DB34C125FE94EC5BED3AB6B1B826B4C_Kanban.Lane` |
-| Weekly Taskboard | https://msasg.visualstudio.com/SAN%20SA/_sprints/taskboard/Bing%20Mobile%20Apps%20Team/SAN%20SA/Month/2026.03 (Tasks/Bugs only, filtered by weekly tag) |
+| Sprint Taskboard | `https://msasg.visualstudio.com/SAN%20SA/_sprints/taskboard/Bing%20Mobile%20Apps%20Team/SAN%20SA/Sprint/<current sprint>` (Tasks/Bugs in current sprint only) |
+| Stories backlog | https://msasg.visualstudio.com/SAN%20SA/_backlogs/backlog/Bing%20Mobile%20Apps%20Team/Stories |
 | Bing_UX project (snrcode PRs) | id `24a0501b-d131-45af-ae52-27db9291efd4`; snrcode repo id `5fbd578a-41e8-4701-bf6e-9c14f61d77a6` |
 | Azure DevOps AAD resource | `499b84ac-1321-427f-aa17-267ca6975798` |
 | Me | `raulpo@microsoft.com` |
@@ -18,8 +19,9 @@
 ## Conventions
 
 - **Board methodology**: see `instructions.md` → Board Methodology. Feature (Features kanban) = big ongoing initiative; Task/Bug (weekly Taskboard) = real work; every Task rolls up to a board Feature.
-- **Current iteration**: `SAN SA\Month\2026.03` (standing team iteration; its configured dates do not match the calendar — confirm with the team default iteration via API if in doubt).
-- **Weekly tag**: Monday date of the current week as `YYYYMMDD` (e.g. `20261026`). Add it to every active Task worked on that week; keep previous weeks' tags.
+- **Iterations**: new work → `SAN SA\Sprint`; work done this sprint → current sprint (`SAN SA\Sprint\YYYY.NN`). Resolve the current sprint live: `GET .../4271a5b2-919a-44ce-a87d-ef4c4d823a21/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`. Never hardcode it.
+- **Required tags**: current cycle (`FY26 C5`) + platform (`iOS` / `Android` / `Backend` / `MiniApps` …) + topic tags.
+- **Weekly tag** (Raul's personal filter): Monday date of the current week as `YYYYMMDD`. Add it to Tasks worked on that week; keep previous weeks' tags.
 - **Features board columns → state**: New→New; Backlog of ideas / Product & Design / Ready for development→Active; In Development→Work in Progress; QA/Testing→Testing; Ready to flight→Resolved; Flighting→Flighting; Shipped/Closed→Closed. Lanes: Core Experience & Quality, Growth, Others.
 - **Area for Raul's work**: `SAN SA\Scaffolding\Fundamental`.
 
