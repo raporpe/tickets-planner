@@ -142,10 +142,11 @@ export function TypeLabel({ type }) {
   return <span className={cn('text-[11px] font-semibold uppercase tracking-wide', typeTone(type))}>{typeShort(type)}</span>;
 }
 
-export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart }) {
+export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart, ...rest }) {
   const { openItem } = useDetail();
   return (
     <article
+      {...rest}
       draggable={!pending}
       onClick={openOnClick(openItem, item.id)}
       onDragStart={(e) => {

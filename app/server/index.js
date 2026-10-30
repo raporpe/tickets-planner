@@ -362,6 +362,32 @@ const toComment = (c) => ({
   modifiedDate: c.modifiedDate,
 });
 
+// Walk up the full parent chain (Task → Story → Feature → Epic …), top-most first.
+async function getAncestors(wi) {
+  const ancestors = [];
+  const seen = new Set([wi.id]);
+  for (let pid = parentOf(wi); pid && !seen.has(pid) && ancestors.length < 10; ) {
+    seen.add(pid);
+    const [p] = await getItems([pid], { relations: true });
+    if (!p) break;
+    ancestors.unshift({
+      id: p.id,
+      title: p.fields['System.Title'],
+      type: p.fields['System.WorkItemType'],
+      state: p.fields['System.State'],
+      iterationPath: p.fields['System.IterationPath'],
+      url: editUrl(p.id),
+    });
+    pid = parentOf(p);
+  }
+  return ancestors;
+}
+
+app.get('/api/workitems/:id/ancestors', route(async (req) => {
+  const wi = await ado(`/_apis/wit/workitems/${Number(req.params.id)}?$expand=relations&api-version=7.1`);
+  return { ancestors: await getAncestors(wi) };
+}));
+
 app.get('/api/workitems/:id', route(async (req) => {
   const id = Number(req.params.id);
   const [wi, comments] = await Promise.all([
@@ -369,8 +395,8 @@ app.get('/api/workitems/:id', route(async (req) => {
     ado(`/${P}/_apis/wit/workItems/${id}/comments?$top=200&order=desc&api-version=${COMMENTS_API}`),
   ]);
   const f = wi.fields;
-  const parentId = parentOf(wi);
-  const parent = parentId ? (await getItems([parentId], { fields: ['System.Title', 'System.WorkItemType'] }))[0] : null;
+  const ancestors = await getAncestors(wi);
+  const parent = ancestors.at(-1) || null;
   return {
     id: wi.id,
     rev: wi.rev,
@@ -388,7 +414,8 @@ app.get('/api/workitems/:id', route(async (req) => {
     changedBy: person(f['System.ChangedBy']),
     changedDate: f['System.ChangedDate'],
     priority: f['Microsoft.VSTS.Common.Priority'],
-    parent: parent && { id: parent.id, title: parent.fields['System.Title'], type: parent.fields['System.WorkItemType'], url: editUrl(parent.id) },
+    parent,
+    ancestors,
     childCount: childrenOf(wi).length,
     fields: Object.fromEntries(RICH_FIELDS.map((r) => [r, f[r] ?? null])),
     markdown: RICH_FIELDS.filter((r) => String(wi.multilineFieldsFormat?.[r] || '').toLowerCase() === 'markdown'),

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { WorkItemCard } from '@/components/work-item';
+import { HierarchyHover } from '@/components/hierarchy';
 import { OTHER, buildColumns, columnKeyOf, isDone } from '@/lib/planning';
 
 function ColumnHeader({ col, items }) {
@@ -83,8 +84,8 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                 </p>
               )}
               {list.map((item) => (
+                <HierarchyHover key={item.id} item={item}>
                 <WorkItemCard
-                  key={item.id}
                   item={item}
                   data={data}
                   features={features}
@@ -93,6 +94,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                   onUpdate={onUpdate}
                   onDragStart={setDragId}
                 />
+                </HierarchyHover>
               ))}
             </div>
           </section>

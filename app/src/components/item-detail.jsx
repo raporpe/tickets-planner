@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { FeaturePicker, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { RichEditor, RichView } from '@/components/rich-text';
+import { HierarchyTree } from '@/components/hierarchy';
 import { api } from '@/api';
 import { useDetail } from '@/lib/detail';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,16 @@ function Meta({ label, children }) {
       <dt className="text-[11px] text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 truncate text-[13px]">{children || <span className="text-muted-foreground">—</span>}</dd>
     </div>
+  );
+}
+
+function Hierarchy({ detail, onOpen }) {
+  return (
+    <section aria-label="Hierarchy">
+      <SectionHeader>Hierarchy</SectionHeader>
+      {detail.ancestors.length === 0 && <p className="mb-1.5 text-[13px] text-amber-300">No parent. This item isn't linked to any Feature.</p>}
+      <HierarchyTree ancestors={detail.ancestors} self={detail} onOpen={onOpen} />
+    </section>
   );
 }
 
@@ -313,6 +324,14 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     }
   }, [item, detail]);
 
+  // Re-read the hierarchy after the parent is changed from the Feature picker.
+  const parentId = item?.parentId;
+  const lastParent = useRef(parentId);
+  useEffect(() => {
+    if (lastParent.current !== parentId && detail?.id === id) api.detail(id).then((fresh) => setDetail((d) => (d?.id === id ? { ...d, ancestors: fresh.ancestors, parent: fresh.parent, rev: fresh.rev } : d)), () => {});
+    lastParent.current = parentId;
+  }, [parentId, id, detail?.id]);
+
   const trackEditing = useCallback(
     (key) => (on) => {
       const had = editors.current.has(key);
@@ -403,7 +422,6 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   }
 
   const pending = item ? pendingIds.has(item.id) : false;
-  const parentInList = detail?.parent && data?.items.some((i) => i.id === detail.parent.id);
 
   return (
     <Sheet open={!!id} onOpenChange={(o) => !o && requestClose()}>
@@ -470,20 +488,9 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="flex flex-col gap-6 px-5 py-4">
+                <Hierarchy detail={detail} onOpen={openItem} />
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
                   <Meta label="Assigned to">{detail.assignedTo?.name}</Meta>
-                  <Meta label="Parent">
-                    {detail.parent &&
-                      (parentInList ? (
-                        <button type="button" className="truncate text-left hover:text-primary hover:underline" onClick={() => openItem(detail.parent.id)}>
-                          {detail.parent.title}
-                        </button>
-                      ) : (
-                        <a href={detail.parent.url} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">
-                          {detail.parent.title}
-                        </a>
-                      ))}
-                  </Meta>
                   <Meta label="Area">{detail.areaPath?.replace(/^SAN SA\\?/, '') || 'SAN SA'}</Meta>
                   <Meta label="Created">
                     <span title={fullDate(detail.createdDate)}>

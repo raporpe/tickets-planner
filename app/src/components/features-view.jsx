@@ -7,11 +7,13 @@ import { cn } from '@/lib/utils';
 import { FeaturePicker, ItemLink, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { columnRank, isDone } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
+import { HierarchyHover } from '@/components/hierarchy';
 
 export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
   const { openItem } = useDetail();
   const via = item.chain.filter((c) => c.type !== 'Feature');
   return (
+    <HierarchyHover item={item}>
     <div
       onClick={openOnClick(openItem, item.id)}
       className={cn(
@@ -42,6 +44,7 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
       <SprintSelect item={item} data={data} onChange={(p) => onUpdate(item, p)} disabled={pending} className="w-full" />
       <StateSelect item={item} states={data.states[item.type]} onChange={(p) => onUpdate(item, p)} disabled={pending} />
     </div>
+    </HierarchyHover>
   );
 }
 

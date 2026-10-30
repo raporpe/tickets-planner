@@ -15,6 +15,7 @@ import { PlanView } from '@/components/plan-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
 import { ItemDetail } from '@/components/item-detail';
+import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
 import { attentionReasons, matchesFilters } from '@/lib/planning';
 
@@ -103,7 +104,10 @@ export default function App() {
       try {
         const r = await api.update(item.id, patch);
         toast.success(`#${item.id} ${label}`);
-        if ('parentId' in patch) await load();
+        if ('parentId' in patch) {
+          clearAncestors();
+          await load();
+        }
         else setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, state: r.state, iterationPath: r.iterationPath } : i)) }));
       } catch (e) {
         setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? previous : i)) }));
