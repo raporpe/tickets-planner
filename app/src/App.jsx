@@ -16,7 +16,7 @@ import { AttentionView } from '@/components/attention-view';
 import { ItemDetail } from '@/components/item-detail';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
-import { attentionReasons, canBeInSprint, matchesFilters } from '@/lib/planning';
+import { attentionReasons, canBeInSprint, matchesFilters, needsAction } from '@/lib/planning';
 import { setTheme, useTheme } from '@/lib/theme';
 
 function ThemeToggle() {
@@ -152,7 +152,7 @@ export default function App() {
   const sprintItems = useMemo(() => visibleItems.filter((i) => canBeInSprint(i.type)), [visibleItems]);
   const shownCount = tab === 'plan' ? sprintItems.length : visibleItems.length;
   const totalCount = tab === 'plan' ? (data?.items || []).filter((i) => canBeInSprint(i.type)).length : data?.items.length;
-  const attentionCount = useMemo(() => [...reasonsById.values()].filter((r) => r.length).length, [reasonsById]);
+  const attentionCount = useMemo(() => [...reasonsById.values()].filter(needsAction).length, [reasonsById]);
 
   const onUpdate = useCallback(
     async (item, patch) => {

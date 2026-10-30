@@ -177,7 +177,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
         {item.weeksCarried >= 4 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="rounded-full bg-orange-50 px-1.5 text-[10px] font-medium text-orange-800 ring-1 ring-orange-200 dark:bg-orange-300/10 dark:text-orange-200 dark:ring-orange-300/25 ring-inset tabular-nums">{item.weeksCarried}w</span>
+              <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border ring-inset tabular-nums">{item.weeksCarried}w</span>
             </TooltipTrigger>
             <TooltipContent>Carried across {item.weeksCarried} weekly tags</TooltipContent>
           </Tooltip>
@@ -199,7 +199,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
       {reasons?.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {reasons
-            .filter((r) => !['no-feature', 'off-board', 'stale'].includes(r.key))
+            .filter((r) => !['no-feature', 'off-board', 'carried'].includes(r.key))
             .map((r) => (
               <span key={r.key} className="rounded-full bg-amber-50 px-2 text-[10px] text-amber-800 ring-1 ring-amber-200 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25 ring-inset">
                 {r.label}

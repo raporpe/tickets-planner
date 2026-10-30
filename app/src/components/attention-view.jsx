@@ -7,7 +7,8 @@ const GROUPS = [
   { keys: ['legacy-iteration', 'past-sprint'], title: 'Outside the sprint structure', hint: 'Move to the backlog or a sprint under SAN SA\\Sprint.' },
   { keys: ['active-backlog'], title: 'Active but not in a sprint', hint: 'Plan it into a sprint, or set it back to New.' },
   { keys: ['story-done'], title: 'Stories whose children are all closed', hint: 'Close the Story if the work is done.' },
-  { keys: ['stale'], title: 'Carried for a long time', hint: 'Four or more weekly tags. Close, split, or recommit.' },
+  { keys: ['idle'], title: 'Gone quiet', hint: 'No change in Azure DevOps for a week or more. Update the state, add a comment, or move it out of the sprint.' },
+  { keys: ['carried'], title: 'Carried for a long time', hint: 'For context only: four or more weekly tags. Not counted as needing attention.', info: true },
 ];
 
 export function AttentionView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
@@ -16,7 +17,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
     items: items.filter((i) => (reasonsById.get(i.id) || []).some((r) => g.keys.includes(r.key))),
   })).filter((g) => g.items.length);
 
-  if (!sections.length) {
+  if (!sections.some((s) => !s.info)) {
     return (
       <div className="flex flex-col items-center gap-2 py-24 text-muted-foreground">
         <CircleCheck className="size-6 text-emerald-600 dark:text-emerald-300" />
@@ -44,7 +45,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
                 pending={pendingIds.has(item.id)}
                 onUpdate={onUpdate}
                 extra={
-                  <span className="text-amber-800 dark:text-amber-200">
+                  <span className={s.info ? 'text-muted-foreground' : 'text-amber-800 dark:text-amber-200'}>
                     {(reasonsById.get(item.id) || []).filter((r) => s.keys.includes(r.key)).map((r) => r.label).join(', ')}
                   </span>
                 }
