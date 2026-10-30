@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { KanbanSquare, Layers, Loader2, RefreshCw, Search, Sparkles, TriangleAlert } from 'lucide-react';
+import { KanbanSquare, Layers, Loader2, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,6 @@ import { PlanView } from '@/components/plan-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
 import { ItemDetail } from '@/components/item-detail';
-import { AssistantPanel } from '@/components/assistant-panel';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
 import { attentionReasons, matchesFilters } from '@/lib/planning';
@@ -56,13 +55,6 @@ export default function App() {
   const [filters, setFilters] = useState({ search: '', types: [], showClosed: false });
   const [tab, setTab] = useState('plan');
   const [detailId, setDetailId] = useState(null);
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantRequest, setAssistantRequest] = useState(null);
-  const askAssistant = useCallback((item) => {
-    setDetailId(null);
-    setAssistantOpen(true);
-    setAssistantRequest({ itemId: item.id, title: item.title, nonce: Date.now() });
-  }, []);
   const detailCtx = useMemo(() => ({ openItem: setDetailId }), []);
   const onItemPatched = useCallback(
     (id, partial) => setData((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...partial } : i)) })),
@@ -178,8 +170,7 @@ export default function App() {
   return (
     <DetailContext.Provider value={detailCtx}>
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-svh">
-      <Tabs value={tab} onValueChange={setTab} className="flex h-full min-w-0 flex-1 flex-col gap-0">
+      <Tabs value={tab} onValueChange={setTab} className="flex h-svh flex-col gap-0">
         <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
           <div className="flex items-baseline gap-2">
             <h1 className="text-[15px] font-semibold tracking-tight">Tickets planner</h1>
@@ -206,15 +197,6 @@ export default function App() {
             <Button size="sm" variant="outline" onClick={load} disabled={loading} aria-label="Refresh from Azure DevOps">
               <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh
-            </Button>
-            <Button
-              size="sm"
-              variant={assistantOpen ? 'secondary' : 'outline'}
-              onClick={() => setAssistantOpen((o) => !o)}
-              aria-pressed={assistantOpen}
-            >
-              <Sparkles className="text-primary" />
-              Assistant
             </Button>
           </div>
         </header>
@@ -281,17 +263,6 @@ export default function App() {
           )}
         </div>
       </Tabs>
-      <AssistantPanel
-        open={assistantOpen}
-        onClose={() => setAssistantOpen(false)}
-        request={assistantRequest}
-        data={data}
-        onApplied={() => {
-          clearAncestors();
-          load();
-        }}
-      />
-      </div>
       {data && (
         <ItemDetail
           id={detailId}
@@ -300,7 +271,6 @@ export default function App() {
           pendingIds={pendingIds}
           onUpdate={onUpdate}
           onItemPatched={onItemPatched}
-          onAskAssistant={askAssistant}
           onClose={() => setDetailId(null)}
         />
       )}

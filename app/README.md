@@ -32,17 +32,4 @@ Click any ticket to open its detail panel. It shows the full hierarchy, from the
 
 Hold **Ctrl** while hovering a card or row to preview its hierarchy without opening the panel. Release Ctrl to hide it.
 
-## Assistant
-
-The **Assistant** button (or **Ask assistant** in a ticket's detail) opens a chat side panel backed by the [GitHub Copilot SDK](https://github.com/github/copilot-sdk), using your Copilot subscription. The agent loop runs on the Express server (`server/agent.js`). You need to be signed in to Copilot CLI, or have `gh auth login` done with an account that has Copilot. Set `AGENT_MODEL` to choose the model (default `claude-sonnet-4.5`).
-
-The agent reads Azure DevOps live and follows the methodology in `../instructions.md`. Its tools:
-
-- `get_item`, `get_tree`, `search_items`, `list_my_items`, `list_features`, `list_sprints` – read-only.
-- `propose_changes` – returns a proposal: create Tasks, Bugs, Stories or Features; update title, description, acceptance criteria, repro steps, priority, state, sprint, parent or tags; add a comment; or move a Feature's board column.
-
-Nothing is written when the agent proposes. The proposal appears as a card where you can untick changes and rename new items. **Apply** re-validates it on the server and only then writes to Azure DevOps; **Discard** drops it. The agent is told what was applied or discarded.
-
-It cannot delete items, create sprints, iterations or areas, change team settings, assign work to others, or edit or delete existing comments. Sprints must already exist.
-
 The app never creates iterations or changes team settings; it only edits work items you own.
