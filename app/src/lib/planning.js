@@ -90,6 +90,12 @@ export const IDLE_DAYS = 7;
 // Info reasons are shown for context but don't count as something to fix.
 export const needsAction = (reasons) => reasons.some((r) => r.severity !== 'info');
 
+// Features your open work rolls up to that sit inside a sprint instead of the sprint root.
+export function featuresInSprint(items, features, data) {
+  const used = new Set(items.filter((i) => !isDone(i) && i.featureId).map((i) => i.featureId));
+  return features.filter((f) => used.has(f.id) && isInSprint(f.iterationPath, data));
+}
+
 export function attentionReasons(item, data, featureById) {
   if (isDone(item)) return [];
   const reasons = [];
@@ -104,13 +110,10 @@ export function attentionReasons(item, data, featureById) {
   if (!isUnderSprintRoot(item, data)) reasons.push({ key: 'legacy-iteration', label: 'Legacy iteration', severity: 'medium' });
   const sprint = data.sprints.find((s) => s.path === item.iterationPath);
   if (sprint?.timeFrame === 'past') reasons.push({ key: 'past-sprint', label: 'Open in a past sprint', severity: 'medium' });
-  if (item.iterationPath === data.backlogPath && ['Active', 'Work in Progress'].includes(item.state)) {
-    reasons.push({ key: 'active-backlog', label: 'Active but unplanned', severity: 'low' });
-  }
   if (item.weeksCarried >= 4) reasons.push({ key: 'carried', label: `Carried ${item.weeksCarried} weeks`, severity: 'info' });
   // Gone quiet: started work, or anything planned into the sprint in progress, that nobody has touched in ADO for a week.
   const idleDays = item.changedDate ? Math.floor((Date.now() - Date.parse(item.changedDate)) / 86400000) : 0;
-  if (idleDays >= IDLE_DAYS && (item.state !== 'New' || sprint?.timeFrame === 'current')) {
+  if (canBeInSprint(item.type) && idleDays >= IDLE_DAYS && (item.state !== 'New' || sprint?.timeFrame === 'current')) {
     reasons.push({ key: 'idle', label: `No update in ${idleDays} days`, severity: 'low' });
   }
   if (item.type === 'User Story' && item.childCount > 0 && item.openChildCount === 0 && item.childrenKnown) {
