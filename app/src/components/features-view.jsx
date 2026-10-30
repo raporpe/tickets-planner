@@ -15,6 +15,7 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
   return (
     <HierarchyHover item={item}>
     <div
+      data-item-id={item.id}
       onClick={openOnClick(openItem, item.id)}
       className={cn(
         'grid cursor-pointer grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)_10rem_7.5rem] items-center gap-3 border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40',
@@ -110,7 +111,7 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
   const openCount = items.filter((i) => !isDone(i)).length;
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
-      <header className="flex items-center gap-2 bg-muted/50 px-3 py-2">
+      <header data-item-id={feature?.id} className="flex items-center gap-2 bg-muted/50 px-3 py-2">
         <button
           type="button"
           onClick={() => setOpen(!open)}

@@ -47,7 +47,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
           </div>
           <div className="overflow-hidden rounded-lg border bg-card">
             {sprintFeatures.map((f) => (
-              <div key={f.id} className="grid grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)] items-center gap-3 border-b px-3 py-1.5 last:border-b-0">
+              <div key={f.id} data-item-id={f.id} className="grid grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)] items-center gap-3 border-b px-3 py-1.5 last:border-b-0">
                 <TypeLabel type="Feature" />
                 <ItemLink item={f} />
                 <span className="truncate text-[13px]">{f.title}</span>

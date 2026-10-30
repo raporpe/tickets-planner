@@ -155,6 +155,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
   return (
     <article
       {...rest}
+      data-item-id={item.id}
       draggable={!pending && !!onDragStart}
       onClick={openOnClick(openItem, item.id)}
       onDragStart={(e) => {

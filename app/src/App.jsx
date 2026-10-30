@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { ItemDetail } from '@/components/item-detail';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
 import { attentionReasons, canBeInSprint, featuresInSprint, matchesFilters, needsAction } from '@/lib/planning';
+import { copyItem } from '@/lib/copy-item';
 import { setTheme, useTheme } from '@/lib/theme';
 
 function ThemeToggle() {
@@ -156,6 +157,28 @@ export default function App() {
     () => [...reasonsById.values()].filter(needsAction).length + (data ? featuresInSprint(data.items, data.features, data).length : 0),
     [reasonsById, data],
   );
+
+  // Press C while hovering a card or row to copy "#id Title [State]" with the id linked to ADO.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key.toLowerCase() !== 'c' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      const hovered = [...document.querySelectorAll(':hover')].pop()?.closest('[data-item-id]');
+      const id = Number(hovered?.dataset.itemId);
+      const d = dataRef.current;
+      const item = id && (d?.items.find((i) => i.id === id) || d?.features.find((f) => f.id === id));
+      if (!item) return;
+      e.preventDefault();
+      copyItem(item).then(
+        () => toast.success(`Copied #${item.id}`),
+        () => toast.error('Could not copy to the clipboard'),
+      );
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const onUpdate = useCallback(
     async (item, patch) => {
