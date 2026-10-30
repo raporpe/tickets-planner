@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { AzureCliCredential, DeviceCodeCredential } from '@azure/identity';
+import { registerAgent } from './agent.js';
 
 const ORG = process.env.ADO_ORG || 'https://msasg.visualstudio.com';
 const PROJECT = process.env.ADO_PROJECT || 'SAN SA';
@@ -296,16 +297,17 @@ app.get('/api/auth/device', route(async () => device || { status: 'idle' }));
 app.get('/api/overview', route(() => buildOverview()));
 
 // Move a Feature to another column of the team's Features board. The column decides the state.
-app.patch('/api/features/:id/column', route(async (req) => {
-  const id = Number(req.params.id);
-  const col = (await getFeatureColumns()).find((c) => c.name === req.body?.column);
-  if (!col) throw Object.assign(new Error(`Unknown board column "${req.body?.column}"`), { status: 400 });
+async function moveFeatureToColumn(id, column) {
+  const col = (await getFeatureColumns()).find((c) => c.name === column);
+  if (!col) throw Object.assign(new Error(`Unknown board column "${column}"`), { status: 400 });
   const ops = [{ op: 'add', path: '/fields/System.State', value: col.state }];
   // Incoming/outgoing columns are derived from the state alone; ADO rejects writing them.
   if (col.type === 'inProgress') ops.push({ op: 'add', path: `/fields/${BOARD_FIELDS.column}`, value: col.name });
   const wi = await ado(`/_apis/wit/workitems/${id}?api-version=7.1`, { method: 'PATCH', body: ops, contentType: 'application/json-patch+json' });
   return { id: wi.id, state: wi.fields['System.State'], column: wi.fields[BOARD_FIELDS.column] || col.name };
-}));
+}
+
+app.patch('/api/features/:id/column', route((req) => moveFeatureToColumn(Number(req.params.id), req.body?.column)));
 
 app.patch('/api/workitems/:id', route(async (req) => {
   const id = Number(req.params.id);
@@ -458,6 +460,11 @@ app.get('/api/attachment', async (req, res) => {
 });
 
 app.get('/api/sprints', route(() => getSprints()));
+
+registerAgent(app, route, {
+  ado, getItems, getSprints, getFeatureColumns, getAncestors, buildOverview, moveFeatureToColumn,
+  parentOf, childrenOf, editUrl, sprintPath, P, ORG, PROJECT, TEAM_ID, BOARD_FIELDS, COMMENTS_API,
+});
 
 const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 if (existsSync(dist)) {

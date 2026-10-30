@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, MessageSquare, Pencil, RefreshCw } from 'lucide-react';
+import { ExternalLink, MessageSquare, Pencil, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -289,7 +289,7 @@ function DetailSkeleton() {
   );
 }
 
-export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPatched, onClose }) {
+export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPatched, onAskAssistant, onClose }) {
   const { openItem } = useDetail();
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
@@ -465,8 +465,19 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                 )}
                 <Button
                   variant="ghost"
+                  size="xs"
+                  className="ml-auto h-7 text-xs"
+                  onClick={() => {
+                    if (editors.current.size && !window.confirm('Discard unsaved changes?')) return;
+                    onAskAssistant?.({ id: detail.id, title: detail.title });
+                  }}
+                >
+                  <Sparkles className="text-primary" /> Ask assistant
+                </Button>
+                <Button
+                  variant="ghost"
                   size="icon-sm"
-                  className="ml-auto size-7"
+                  className="size-7"
                   onClick={load}
                   disabled={loading}
                   aria-label="Reload from Azure DevOps"

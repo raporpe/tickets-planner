@@ -25,4 +25,11 @@ export const api = {
   detail: (id) => request('GET', `/workitems/${id}`),
   addComment: (id, text) => request('POST', `/workitems/${id}/comments`, { text }),
   editComment: (id, commentId, text, format) => request('PATCH', `/workitems/${id}/comments/${commentId}`, { text, format }),
+  agentStart: (itemId) => request('POST', '/agent/sessions', { itemId }),
+  agentSend: (id, text) => request('POST', `/agent/sessions/${id}/messages`, { text }),
+  agentAbort: (id) => request('POST', `/agent/sessions/${id}/abort`),
+  agentClose: (id) => request('DELETE', `/agent/sessions/${id}`),
+  agentEvents: (id) => new EventSource(`/api/agent/sessions/${id}/events`),
+  applyProposal: (id, changes) => request('POST', `/agent/proposals/${id}/apply`, { changes }),
+  discardProposal: (id) => request('POST', `/agent/proposals/${id}/discard`),
 };
