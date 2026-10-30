@@ -87,6 +87,8 @@ function Count({ items }) {
   );
 }
 
+const ghostTransform = (x, y) => `translate3d(${x}px, ${y}px, 0) rotate(-1.5deg) scale(1.03)`;
+
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
   const { layout, place, clearColumn } = useBoardLayout();
   const [drag, setDrag] = useState(null);
@@ -97,6 +99,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const cardEls = useRef(new Map());
   const computed = useRef(null);
   const lastDrop = useRef(null);
+  const ghost = useRef(null);
 
   const columns = buildColumns(data);
   const byCol = new Map(columns.map((c) => [c.key, []]));
@@ -170,17 +173,33 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     const rect = e.currentTarget.getBoundingClientRect();
     const d = { id: item.id, dx: e.clientX - rect.left, dy: e.clientY - rect.top, w: rect.width, sx: e.clientX, sy: e.clientY };
     let started = false;
+    let over;
+    let frame = 0;
+    let last = null;
+    // Pointer moves only touch the floating card's transform; React re-renders just when the drop target changes.
+    const paint = () => {
+      frame = 0;
+      if (ghost.current) ghost.current.style.transform = ghostTransform(last.clientX - d.dx, last.clientY - d.dy);
+      const o = targetAt(last.clientX, last.clientY);
+      if (o !== over) {
+        over = o;
+        setDrag((cur) => cur && { ...cur, over: o });
+      }
+    };
     const move = (ev) => {
       if (!started) {
         if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) return;
         started = true;
         window.getSelection()?.removeAllRanges();
         document.body.style.cursor = 'grabbing';
+        setDrag({ ...d, x: ev.clientX, y: ev.clientY, over: null });
       }
       ev.preventDefault();
-      setDrag({ ...d, x: ev.clientX, y: ev.clientY, over: targetAt(ev.clientX, ev.clientY) });
+      last = ev;
+      frame ||= requestAnimationFrame(paint);
     };
     const up = (ev) => {
+      cancelAnimationFrame(frame);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
@@ -227,7 +246,8 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   computed.current = placed;
 
   return (
-    <div className="relative h-full overflow-hidden">
+    // While dragging, cards ignore the pointer so hovering them costs nothing (and drop targets resolve straight to the column).
+    <div className={cn('relative h-full overflow-hidden', drag && '[&_article]:pointer-events-none')}>
       <div className="flex h-full gap-3 px-4 pb-14">
         {/* Backlog: a plain vertical stack, exactly one card wide. */}
         <section
@@ -367,8 +387,9 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
       {dragged &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-50"
-            style={{ left: drag.x - drag.dx, top: drag.y - drag.dy, width: drag.w, transform: 'rotate(-1.5deg) scale(1.03)', transformOrigin: `${drag.dx}px ${drag.dy}px` }}
+            ref={ghost}
+            className="pointer-events-none fixed top-0 left-0 z-50 will-change-transform"
+            style={{ width: drag.w, transform: ghostTransform(drag.x - drag.dx, drag.y - drag.dy), transformOrigin: `${drag.dx}px ${drag.dy}px` }}
           >
             <WorkItemCard
               {...cardProps(dragged)}
