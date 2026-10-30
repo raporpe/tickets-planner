@@ -57,7 +57,7 @@ function Hierarchy({ detail, onOpen }) {
     <section aria-label="Hierarchy">
       <SectionHeader>Hierarchy</SectionHeader>
       {detail.ancestors.length === 0 && <p className="mb-1.5 text-[13px] text-amber-300">No parent. This item isn't linked to any Feature.</p>}
-      <HierarchyTree ancestors={detail.ancestors} self={detail} onOpen={onOpen} />
+      <HierarchyTree ancestors={detail.ancestors} self={detail} children={detail.children} onOpen={onOpen} />
     </section>
   );
 }

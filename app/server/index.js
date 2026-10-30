@@ -397,6 +397,17 @@ app.get('/api/workitems/:id', route(async (req) => {
   const f = wi.fields;
   const ancestors = await getAncestors(wi);
   const parent = ancestors.at(-1) || null;
+  const childIds = childrenOf(wi);
+  const isDone = (s) => ['Closed', 'Done', 'Removed', 'Resolved', 'Shipped'].includes(s);
+  const children = (childIds.length ? await getItems(childIds) : [])
+    .map((c) => ({
+      id: c.id,
+      title: c.fields['System.Title'],
+      type: c.fields['System.WorkItemType'],
+      state: c.fields['System.State'],
+      url: editUrl(c.id),
+    }))
+    .sort((a, b) => isDone(a.state) - isDone(b.state) || a.id - b.id);
   return {
     id: wi.id,
     rev: wi.rev,
@@ -416,7 +427,8 @@ app.get('/api/workitems/:id', route(async (req) => {
     priority: f['Microsoft.VSTS.Common.Priority'],
     parent,
     ancestors,
-    childCount: childrenOf(wi).length,
+    childCount: childIds.length,
+    children,
     fields: Object.fromEntries(RICH_FIELDS.map((r) => [r, f[r] ?? null])),
     markdown: RICH_FIELDS.filter((r) => String(wi.multilineFieldsFormat?.[r] || '').toLowerCase() === 'markdown'),
     comments: (comments.comments || []).map(toComment),

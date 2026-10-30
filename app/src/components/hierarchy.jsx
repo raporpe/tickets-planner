@@ -5,19 +5,23 @@ import { StatePill, TypeLabel } from '@/components/work-item';
 import { api } from '@/api';
 import { cn } from '@/lib/utils';
 
-/** Tree from the top-most ancestor down to `self`. Ancestors are clickable when `onOpen` is given. */
-export function HierarchyTree({ ancestors, self, onOpen, compact = false }) {
-  const chain = [...ancestors, { ...self, self: true }];
+/**
+ * Tree from the top-most ancestor down to `self`, plus `self`'s direct children one level below.
+ * Other items are clickable when `onOpen` is given.
+ */
+export function HierarchyTree({ ancestors, self, children = [], onOpen, compact = false }) {
+  const chain = [...ancestors.map((n, i) => ({ ...n, depth: i })), { ...self, self: true, depth: ancestors.length }];
+  const nodes = [...chain, ...children.map((c) => ({ ...c, depth: ancestors.length + 1 }))];
   const step = compact ? 12 : 16;
   return (
     <ol className="flex flex-col">
-      {chain.map((n, i) => (
-        <li key={n.id} className={cn('relative flex min-w-0 items-center gap-2', compact ? 'py-0.5' : 'py-1')} style={{ paddingLeft: i * step }}>
-          {i > 0 && (
+      {nodes.map((n) => (
+        <li key={n.id} className={cn('relative flex min-w-0 items-center gap-2', compact ? 'py-0.5' : 'py-1')} style={{ paddingLeft: n.depth * step }}>
+          {n.depth > 0 && (
             <span
               aria-hidden
               className="absolute top-0 h-1/2 w-2.5 rounded-bl border-b border-l border-border"
-              style={{ left: (i - 1) * step + 5 }}
+              style={{ left: (n.depth - 1) * step + 5 }}
             />
           )}
           <span className="shrink-0 whitespace-nowrap">
