@@ -44,16 +44,60 @@ function describe(patch, data, features) {
   return 'updated';
 }
 
-function LoadingBoard() {
+function CardSkeleton() {
   return (
-    <div className="flex gap-3 px-4">
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex w-80 flex-col gap-2 rounded-lg border p-2">
-          <Skeleton className="h-10" />
-          {[0, 1, 2, 3].map((j) => (
-            <Skeleton key={j} className="h-20" />
-          ))}
+    <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2.5">
+      <Skeleton className="h-3.5 w-28" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-3 w-2/3" />
+    </div>
+  );
+}
+
+function ColumnHeaderSkeleton({ wide }) {
+  return (
+    <div className="flex items-center gap-2 border-b px-3 py-3">
+      <Skeleton className="size-4" />
+      <Skeleton className={wide ? 'h-4 w-24' : 'h-4 w-16'} />
+    </div>
+  );
+}
+
+// Mirrors the real Sprint planning layout: one-card-wide Backlog, the next sprint's whiteboard, the drawer handle.
+function LoadingPlan() {
+  return (
+    <div className="relative h-full overflow-hidden" aria-busy="true" aria-label="Loading sprint planning">
+      <div className="flex h-full gap-3 px-4 pb-14">
+        <div className="flex h-full w-[20rem] shrink-0 flex-col rounded-lg border bg-muted/40">
+          <ColumnHeaderSkeleton />
+          <div className="flex flex-col gap-1.5 overflow-hidden p-2">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
         </div>
+        <div className="flex h-full min-w-[19rem] flex-1 flex-col rounded-lg border bg-muted/40">
+          <ColumnHeaderSkeleton wide />
+          <div className="whiteboard-dots grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2.5 overflow-hidden p-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="absolute inset-x-4 bottom-0 flex h-11 items-center gap-2 rounded-t-xl border border-b-0 bg-card px-4">
+        <Skeleton className="size-4" />
+        <Skeleton className="h-4 w-40" />
+      </div>
+    </div>
+  );
+}
+
+function LoadingList() {
+  return (
+    <div className="flex flex-col gap-2 px-4" aria-busy="true">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <Skeleton key={i} className="h-14" />
       ))}
     </div>
   );
@@ -251,7 +295,7 @@ export default function App() {
             </div>
           )}
           {!data ? (
-            loading && <LoadingBoard />
+            loading && (tab === 'plan' ? <LoadingPlan /> : <LoadingList />)
           ) : (
             <>
               <TabsContent value="plan" className="h-full">
