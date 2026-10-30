@@ -5,13 +5,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { FeaturePicker, ItemLink, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { columnRank, isDone } from '@/lib/planning';
+import { openOnClick, useDetail } from '@/lib/detail';
 
 export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
+  const { openItem } = useDetail();
   const via = item.chain.filter((c) => c.type !== 'Feature');
   return (
     <div
+      onClick={openOnClick(openItem, item.id)}
       className={cn(
-        'grid grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)_10rem_7.5rem] items-center gap-3 border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40',
+        'grid cursor-pointer grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)_10rem_7.5rem] items-center gap-3 border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
       )}
@@ -19,7 +22,13 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
       <TypeLabel type={item.type} />
       <ItemLink item={item} />
       <div className="min-w-0">
-        <p className="truncate text-[13px]">{item.title}</p>
+        <button
+          type="button"
+          onClick={() => openItem(item.id)}
+          className="block w-full truncate text-left text-[13px] hover:underline hover:decoration-muted-foreground hover:underline-offset-2 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          {item.title}
+        </button>
         {(via.length > 0 || extra) && (
           <p className="truncate text-[11px] text-muted-foreground">
             {via.length > 0 && <>via {via.map((c) => `${c.type} ${c.id}`).join(' › ')}</>}

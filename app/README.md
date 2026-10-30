@@ -27,4 +27,7 @@ Tokens stay in the server process memory. No ticket data is stored locally; Azur
 - **Sprint planning** – Backlog and one column per `SAN SA\Sprint` iteration. Drag cards between columns to change the iteration; change state and parent Feature inline.
 - **By Feature** – my items grouped under their board Feature, with off-board Features flagged.
 - **Needs attention** – items without a board Feature, in legacy/past iterations, active but unplanned, Stories whose children are all closed, or carried 4+ weeks.
-- **Prepare next sprint** – creates the next 2-week `SAN SA\Sprint\YYYY.NN` iteration and subscribes the team to it.
+
+Click any ticket to open its detail panel. From there you can change the state, Feature and sprint; edit the title, description, repro steps and acceptance criteria; and add comments or edit your own. Fields stored as Markdown in Azure DevOps are edited as Markdown, and HTML fields use a rich-text editor. If someone else changed the item since you opened it, the save is rejected and their version is shown.
+
+The app never creates iterations or changes team settings; it only edits work items you own.

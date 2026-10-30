@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarPlus, KanbanSquare, Layers, Loader2, RefreshCw, Search, TriangleAlert } from 'lucide-react';
+import { KanbanSquare, Layers, Loader2, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,22 +9,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { api } from '@/api';
 import { SignIn } from '@/components/sign-in';
 import { PlanView } from '@/components/plan-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
+import { ItemDetail } from '@/components/item-detail';
+import { DetailContext } from '@/lib/detail';
 import { attentionReasons, matchesFilters } from '@/lib/planning';
 
 const TYPES = ['Task', 'Bug', 'User Story'];
@@ -37,48 +28,6 @@ function describe(patch, data, features) {
   }
   if ('parentId' in patch) return `parent → ${features.find((f) => f.id === patch.parentId)?.title || patch.parentId}`;
   return 'updated';
-}
-
-function NextSprintButton({ data, onDone }) {
-  const [busy, setBusy] = useState(false);
-  const current = data.sprints.find((s) => s.timeFrame === 'current');
-  async function run() {
-    setBusy(true);
-    try {
-      const r = await api.prepareNextSprint();
-      const what = [r.created && 'created', r.subscribed && 'added to the team'].filter(Boolean).join(' and ') || 'already ready';
-      toast.success(`Sprint ${r.sprint.name} ${what}`, { description: `${r.sprint.start?.slice(0, 10)} → ${r.sprint.finish?.slice(0, 10)}` });
-      onDone();
-    } catch (e) {
-      toast.error('Could not prepare the next sprint', { description: e.message });
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button size="sm" disabled={busy}>
-          {busy ? <Loader2 className="animate-spin" /> : <CalendarPlus />}
-          Prepare next sprint
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Prepare the next sprint?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Finds the sprint after {current ? current.name : 'the current one'} under <code>SAN SA\Sprint</code>. If none exists it creates the
-            next one (Monday to the following Friday, two weeks), then selects it for the Bing Mobile Apps Team. This changes the team's
-            iterations for everyone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={run}>Prepare sprint</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
 }
 
 function LoadingBoard() {
@@ -104,6 +53,12 @@ export default function App() {
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [filters, setFilters] = useState({ search: '', types: [], showClosed: false });
   const [tab, setTab] = useState('plan');
+  const [detailId, setDetailId] = useState(null);
+  const detailCtx = useMemo(() => ({ openItem: setDetailId }), []);
+  const onItemPatched = useCallback(
+    (id, partial) => setData((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...partial } : i)) })),
+    [],
+  );
 
   const checkAuth = useCallback(async () => {
     setAuth(await api.status().catch((e) => ({ signedIn: false, error: e.message })));
@@ -185,6 +140,7 @@ export default function App() {
   const viewProps = { data, items: visibleItems, features: data?.features || [], pendingIds, reasonsById, onUpdate };
 
   return (
+    <DetailContext.Provider value={detailCtx}>
     <TooltipProvider delayDuration={300}>
       <Tabs value={tab} onValueChange={setTab} className="flex h-svh flex-col gap-0">
         <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
@@ -214,7 +170,6 @@ export default function App() {
               <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh
             </Button>
-            {data && <NextSprintButton data={data} onDone={load} />}
           </div>
         </header>
 
@@ -280,7 +235,19 @@ export default function App() {
           )}
         </div>
       </Tabs>
+      {data && (
+        <ItemDetail
+          id={detailId}
+          data={data}
+          features={data.features}
+          pendingIds={pendingIds}
+          onUpdate={onUpdate}
+          onItemPatched={onItemPatched}
+          onClose={() => setDetailId(null)}
+        />
+      )}
       <Toaster position="bottom-right" />
     </TooltipProvider>
+    </DetailContext.Provider>
   );
 }

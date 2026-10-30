@@ -18,6 +18,7 @@ const BOARD_FIELDS = {
 };
 const P = encodeURIComponent(PROJECT);
 const WORK_TYPES = ['Task', 'Bug', 'User Story'];
+const RICH_FIELDS = ['System.Description', 'Microsoft.VSTS.TCM.ReproSteps', 'Microsoft.VSTS.Common.AcceptanceCriteria'];
 
 // ---------- auth ----------
 
@@ -227,16 +228,6 @@ async function buildOverview() {
   };
 }
 
-function nextSprintName(name) {
-  const m = /^(.*?)(\d+)$/.exec(name);
-  if (!m) return `${name}.next`;
-  return m[1] + String(Number(m[2]) + 1).padStart(m[2].length, '0');
-}
-
-function isoDate(d) {
-  return `${d.toISOString().slice(0, 10)}T00:00:00Z`;
-}
-
 // ---------- HTTP ----------
 
 const app = express();
@@ -301,6 +292,15 @@ app.patch('/api/workitems/:id', route(async (req) => {
   const id = Number(req.params.id);
   const b = req.body || {};
   const ops = [];
+  // Fail instead of silently overwriting someone else's edit made since the item was loaded.
+  if (b.rev) ops.push({ op: 'test', path: '/rev', value: Number(b.rev) });
+  if (typeof b.title === 'string' && b.title.trim()) ops.push({ op: 'add', path: '/fields/System.Title', value: b.title.trim() });
+  for (const [ref, value] of Object.entries(b.fields || {})) {
+    if (!RICH_FIELDS.includes(ref)) throw Object.assign(new Error(`Field ${ref} is not editable here`), { status: 400 });
+    ops.push({ op: 'add', path: `/fields/${ref}`, value: String(value ?? '') });
+    // Keep Markdown fields in Markdown; ADO would otherwise treat the value as HTML.
+    if ((b.markdown || []).includes(ref)) ops.push({ op: 'add', path: `/multilineFieldsFormat/${ref}`, value: 'Markdown' });
+  }
   if (b.iterationPath) ops.push({ op: 'add', path: '/fields/System.IterationPath', value: b.iterationPath });
   if (b.state) ops.push({ op: 'add', path: '/fields/System.State', value: b.state });
   if (b.unassign) ops.push({ op: 'add', path: '/fields/System.AssignedTo', value: '' });
@@ -313,42 +313,105 @@ app.patch('/api/workitems/:id', route(async (req) => {
     }
   }
   if (!ops.length) return { ok: true, unchanged: true };
-  const wi = await ado(`/_apis/wit/workitems/${id}?api-version=7.1`, { method: 'PATCH', body: ops, contentType: 'application/json-patch+json' });
-  return { id: wi.id, state: wi.fields['System.State'], iterationPath: wi.fields['System.IterationPath'] };
+  let wi;
+  try {
+    wi = await ado(`/_apis/wit/workitems/${id}?api-version=7.1`, { method: 'PATCH', body: ops, contentType: 'application/json-patch+json' });
+  } catch (e) {
+    if (b.rev && (e.status === 412 || /rev|TF26071|test operation/i.test(e.message))) {
+      throw Object.assign(new Error('Someone changed this item since you opened it. Reload it and try again.'), { status: 409 });
+    }
+    throw e;
+  }
+  return {
+    id: wi.id,
+    rev: wi.rev,
+    title: wi.fields['System.Title'],
+    state: wi.fields['System.State'],
+    iterationPath: wi.fields['System.IterationPath'],
+  };
 }));
+
+const COMMENTS_API = '7.1-preview.4';
+const person = (p) => (p ? { id: p.id, name: p.displayName, email: p.uniqueName } : null);
+const toComment = (c) => ({
+  id: c.id,
+  text: c.text || '',
+  format: String(c.format || 'html').toLowerCase(),
+  version: c.version,
+  createdBy: person(c.createdBy),
+  createdDate: c.createdDate,
+  modifiedDate: c.modifiedDate,
+});
+
+app.get('/api/workitems/:id', route(async (req) => {
+  const id = Number(req.params.id);
+  const [wi, comments] = await Promise.all([
+    ado(`/_apis/wit/workitems/${id}?$expand=relations&api-version=7.1`),
+    ado(`/${P}/_apis/wit/workItems/${id}/comments?$top=200&order=desc&api-version=${COMMENTS_API}`),
+  ]);
+  const f = wi.fields;
+  const parentId = parentOf(wi);
+  const parent = parentId ? (await getItems([parentId], { fields: ['System.Title', 'System.WorkItemType'] }))[0] : null;
+  return {
+    id: wi.id,
+    rev: wi.rev,
+    url: editUrl(wi.id),
+    type: f['System.WorkItemType'],
+    title: f['System.Title'],
+    state: f['System.State'],
+    reason: f['System.Reason'],
+    iterationPath: f['System.IterationPath'],
+    areaPath: f['System.AreaPath'],
+    tags: (f['System.Tags'] || '').split(';').map((t) => t.trim()).filter(Boolean),
+    assignedTo: person(f['System.AssignedTo']),
+    createdBy: person(f['System.CreatedBy']),
+    createdDate: f['System.CreatedDate'],
+    changedBy: person(f['System.ChangedBy']),
+    changedDate: f['System.ChangedDate'],
+    priority: f['Microsoft.VSTS.Common.Priority'],
+    parent: parent && { id: parent.id, title: parent.fields['System.Title'], type: parent.fields['System.WorkItemType'], url: editUrl(parent.id) },
+    childCount: childrenOf(wi).length,
+    fields: Object.fromEntries(RICH_FIELDS.map((r) => [r, f[r] ?? null])),
+    markdown: RICH_FIELDS.filter((r) => String(wi.multilineFieldsFormat?.[r] || '').toLowerCase() === 'markdown'),
+    comments: (comments.comments || []).map(toComment),
+    commentCount: comments.totalCount ?? (comments.comments || []).length,
+  };
+}));
+
+app.post('/api/workitems/:id/comments', route(async (req) => {
+  const text = String(req.body?.text || '').trim();
+  if (!text) throw Object.assign(new Error('Comment is empty'), { status: 400 });
+  const c = await ado(`/${P}/_apis/wit/workItems/${Number(req.params.id)}/comments?api-version=${COMMENTS_API}`, { method: 'POST', body: { text } });
+  return toComment(c);
+}));
+
+app.patch('/api/workitems/:id/comments/:commentId', route(async (req) => {
+  const text = String(req.body?.text || '').trim();
+  if (!text) throw Object.assign(new Error('Comment is empty'), { status: 400 });
+  const fmt = req.body?.format === 'markdown' ? '&format=markdown' : '';
+  const c = await ado(
+    `/${P}/_apis/wit/workItems/${Number(req.params.id)}/comments/${Number(req.params.commentId)}?api-version=${COMMENTS_API}${fmt}`,
+    { method: 'PATCH', body: { text } },
+  );
+  return toComment(c);
+}));
+
+// Inline images in descriptions/comments are ADO attachments that need the bearer token.
+app.get('/api/attachment', async (req, res) => {
+  try {
+    const u = new URL(String(req.query.url || ''));
+    if (u.origin !== new URL(ORG).origin || !/\/_apis\/wit\/attachments\//i.test(u.pathname)) return res.status(400).end();
+    const r = await fetch(u, { headers: { Authorization: `Bearer ${await token()}` } });
+    if (!r.ok) return res.status(r.status).end();
+    res.set('Content-Type', r.headers.get('content-type') || 'application/octet-stream');
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch {
+    res.status(400).end();
+  }
+});
 
 app.get('/api/sprints', route(() => getSprints()));
-
-// Ensure the sprint after the current one exists and is on the team's Taskboard.
-app.post('/api/sprints/next', route(async () => {
-  let sprints = await getSprints();
-  const current = sprints.find((s) => s.timeFrame === 'current') || [...sprints].reverse().find((s) => s.timeFrame === 'past');
-  const after = current?.finish ? new Date(current.finish) : new Date();
-  let next = sprints.find((s) => s.start && new Date(s.start) > after);
-  let created = false;
-  if (!next) {
-    const last = sprints[sprints.length - 1];
-    const start = new Date(last?.finish || Date.now());
-    start.setUTCHours(0, 0, 0, 0);
-    do start.setUTCDate(start.getUTCDate() + 1); while (start.getUTCDay() !== 1);
-    const finish = new Date(start);
-    finish.setUTCDate(finish.getUTCDate() + 11);
-    const name = last ? nextSprintName(last.name) : `${start.getUTCFullYear()}.01`;
-    await ado(`/${P}/_apis/wit/classificationnodes/Iterations/${encodeURIComponent(SPRINT_ROOT)}?api-version=7.1`, {
-      method: 'POST',
-      body: { name, attributes: { startDate: isoDate(start), finishDate: isoDate(finish) } },
-    });
-    created = true;
-    sprints = await getSprints();
-    next = sprints.find((s) => s.name === name);
-  }
-  let subscribed = false;
-  if (!next.subscribed) {
-    await ado(`/${P}/${TEAM_ID}/_apis/work/teamsettings/iterations?api-version=7.1`, { method: 'POST', body: { id: next.identifier } });
-    subscribed = true;
-  }
-  return { sprint: { ...next, subscribed: true }, created, subscribed };
-}));
 
 const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 if (existsSync(dist)) {

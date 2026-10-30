@@ -23,7 +23,7 @@ function ColumnHeader({ col, items }) {
                   Not on team
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>Not selected in team settings, so it won't show on the team's sprint views. "Prepare next sprint" fixes this.</TooltipContent>
+              <TooltipContent>Not selected in team settings, so it won't show on the team's sprint views. Ask the team admin to add it.</TooltipContent>
             </Tooltip>
           )}
         </div>

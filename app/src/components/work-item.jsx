@@ -6,6 +6,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { columnRank, isDone, stateTone, typeShort, typeTone } from '@/lib/planning';
+import { openOnClick, useDetail } from '@/lib/detail';
 
 export function StatePill({ state, className }) {
   return (
@@ -142,9 +143,11 @@ export function TypeLabel({ type }) {
 }
 
 export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart }) {
+  const { openItem } = useDetail();
   return (
     <article
       draggable={!pending}
+      onClick={openOnClick(openItem, item.id)}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', String(item.id));
         e.dataTransfer.effectAllowed = 'move';
@@ -172,7 +175,13 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
           <StateSelect item={item} states={data.states[item.type]} onChange={(p) => onUpdate(item, p)} disabled={pending} />
         </div>
       </div>
-      <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-foreground">{item.title}</p>
+      <button
+        type="button"
+        onClick={() => openItem(item.id)}
+        className="mt-1 line-clamp-2 block w-full text-left text-[13px] leading-snug text-foreground hover:underline hover:decoration-muted-foreground hover:underline-offset-2 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        {item.title}
+      </button>
       <div className="mt-1 -ml-1">
         <FeaturePicker item={item} features={features} onPick={(parentId) => onUpdate(item, { parentId })} disabled={pending} compact />
       </div>
