@@ -68,7 +68,7 @@ function ColumnHeaderSkeleton({ wide }) {
 function LoadingPlan() {
   return (
     <div className="relative h-full overflow-hidden" aria-busy="true" aria-label="Loading sprint planning">
-      <div className="flex h-full gap-3 px-4 pb-14">
+      <div className="flex h-full gap-3 px-4 pr-14 pb-14">
         <div className="flex h-full w-[20rem] shrink-0 flex-col rounded-lg border bg-muted/40">
           <ColumnHeaderSkeleton />
           <div className="flex flex-col gap-1.5 overflow-hidden p-2">
@@ -85,6 +85,10 @@ function LoadingPlan() {
             ))}
           </div>
         </div>
+      </div>
+      <div className="absolute top-0 right-0 bottom-14 flex w-11 flex-col items-center gap-2 rounded-l-xl border border-r-0 bg-card py-3">
+        <Skeleton className="size-4" />
+        <Skeleton className="h-24 w-4" />
       </div>
       <div className="absolute inset-x-4 bottom-0 flex h-11 items-center gap-2 rounded-t-xl border border-b-0 bg-card px-4">
         <Skeleton className="size-4" />

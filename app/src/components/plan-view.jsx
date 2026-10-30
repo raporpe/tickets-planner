@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarClock, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, ChevronLeft, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -202,6 +202,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const [editingNote, setEditingNote] = useState(null);
   const [drag, setDrag] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sideOpen, setSideOpen] = useState(false);
   const [heights, setHeights] = useState({});
   const [boardWidth, setBoardWidth] = useState(MIN_W + PAD * 2);
   const board = useRef(null);
@@ -221,16 +222,18 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   }, [data, items]);
 
   const backlog = columns.find((c) => c.kind === 'backlog');
-  const nextSprint = data.sprints.find((s) => s.timeFrame === 'future');
+  const [nextSprint, laterSprint] = data.sprints.filter((s) => s.timeFrame === 'future');
   const next = nextSprint && { ...columns.find((c) => c.key === nextSprint.path), next: true };
-  // Everything that isn't the backlog or the next sprint lives in the drawer: the sprint in progress
+  // The sprint after the whiteboard's sits in a side drawer, so work can be pushed one sprint further.
+  const later = laterSprint && columns.find((c) => c.key === laterSprint.path);
+  // Everything that isn't the backlog or an upcoming sprint lives in the bottom drawer: the sprint in progress
   // first, then any other sprint or legacy iteration that still holds tickets.
   const drawerCols = columns
-    .filter((c) => c !== backlog && c.key !== next?.key)
+    .filter((c) => c !== backlog && c.key !== next?.key && c.key !== later?.key)
     .filter((c) => c.sprint?.timeFrame === 'current' || byCol.get(c.key).length);
   const current = drawerCols.find((c) => c.sprint?.timeFrame === 'current');
   const drawerCount = drawerCols.reduce((n, c) => n + byCol.get(c.key).filter((i) => !isDone(i)).length, 0);
-  const allCols = [backlog, next, ...drawerCols].filter(Boolean);
+  const allCols = [backlog, next, later, ...drawerCols].filter(Boolean);
 
   useEffect(() => {
     if (!board.current) return undefined;
@@ -240,11 +243,15 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   }, [next?.key]);
 
   useEffect(() => {
-    if (!drawerOpen) return undefined;
-    const onKey = (e) => e.key === 'Escape' && !drag && setDrawerOpen(false);
+    if (!drawerOpen && !sideOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || drag) return;
+      setDrawerOpen(false);
+      setSideOpen(false);
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawerOpen, drag]);
+  }, [drawerOpen, sideOpen, drag]);
 
   // Card heights feed the whiteboard layout. A ResizeObserver reports them without forcing a layout on every render.
   useEffect(() => {
@@ -393,7 +400,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   return (
     // While dragging, cards ignore the pointer so hovering them costs nothing (and drop targets resolve straight to the column).
     <div className={cn('relative h-full overflow-hidden', drag && '[&_article]:pointer-events-none')}>
-      <div className="flex h-full gap-3 px-4 pb-14">
+      <div className={cn('flex h-full gap-3 px-4 pb-14', later && 'pr-14')}>
         {/* Backlog: a plain vertical stack, exactly one card wide. */}
         <section
           aria-label={backlog.title}
@@ -486,6 +493,57 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
           </section>
         )}
       </div>
+
+      {/* The sprint after next: a drawer on the right that slides in to take tickets you push one sprint further. */}
+      {later && (
+        <div
+          className={cn(
+            'absolute top-0 right-0 bottom-14 z-20 flex w-[min(24rem,40vw)] rounded-l-xl border border-r-0 bg-card/95 shadow-[-10px_0_30px_-12px_oklch(0.35_0.04_60/0.25)] backdrop-blur-sm dark:shadow-[-12px_0_30px_-10px_oklch(0_0_0/0.6)]',
+            'transition-transform duration-500 ease-[cubic-bezier(0.34,1.3,0.64,1)] motion-reduce:transition-none',
+            !sideOpen && 'translate-x-[calc(100%-2.75rem)] ease-[cubic-bezier(0.5,0,0.2,1)] duration-300',
+          )}
+        >
+          <button
+            type="button"
+            aria-expanded={sideOpen}
+            aria-controls="later-drawer"
+            aria-label={`${sideOpen ? 'Hide' : 'Show'} ${later.title}`}
+            onClick={() => setSideOpen((o) => !o)}
+            data-drop={later.key}
+            className={cn(
+              'group relative flex w-11 shrink-0 flex-col items-center gap-2 rounded-l-xl py-3 transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+              zoneState(later) === 'over' && 'bg-primary/10',
+              zoneState(later) === 'blocked' && 'opacity-50',
+            )}
+          >
+            <span aria-hidden className="absolute top-1/2 left-1.5 h-9 w-1 -translate-y-1/2 rounded-full bg-foreground/15 transition-[height,background-color] group-hover:h-12 group-hover:bg-foreground/25" />
+            <ChevronLeft className={cn('size-4 text-muted-foreground transition-transform duration-300', sideOpen && 'rotate-180')} />
+            <CalendarPlus className="size-4 text-muted-foreground" />
+            <span className="text-sm font-semibold [writing-mode:vertical-rl]">{later.title}</span>
+            <span className="text-xs text-muted-foreground tabular-nums [writing-mode:vertical-rl]">
+              {byCol.get(later.key).filter((i) => !isDone(i)).length} open
+            </span>
+          </button>
+          <section
+            id="later-drawer"
+            inert={!sideOpen}
+            aria-label={later.title}
+            data-drop={later.key}
+            className={cn('my-3 mr-3 flex min-w-0 flex-1 flex-col rounded-lg border bg-muted/40 transition-[opacity,border-color,background-color]', zoneClass(later))}
+          >
+            <header className="flex items-start gap-2 border-b px-3 py-2">
+              <ColumnTitle col={later} />
+              <span className="ml-auto">
+                <Count items={byCol.get(later.key)} />
+              </span>
+            </header>
+            <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2">
+              {byCol.get(later.key).length === 0 && <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing here yet. Drag a card onto this drawer to push it one sprint further.</p>}
+              {byCol.get(later.key).map(listCard)}
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Current sprint drawer: tucked away at the bottom, slides up when you want to pull tickets out of it. */}
       <div
