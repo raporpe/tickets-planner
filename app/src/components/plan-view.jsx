@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CalendarClock, ChevronUp, Inbox, History, LayoutGrid } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -87,6 +87,26 @@ function Count({ items }) {
   );
 }
 
+/**
+ * One card on the plan. Memoized with primitive/stable props so starting a drag or crossing into another
+ * section only re-renders the section frames, not every card.
+ */
+const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons, onUpdate, onStart, register, hidden, free, x, y, w, z, animate }) {
+  const ref = useCallback((el) => register(item.id, el), [register, item.id]);
+  return (
+    <div
+      ref={ref}
+      onPointerDown={(e) => onStart(e, item)}
+      className={cn(free ? 'absolute' : 'select-none', 'touch-none', free && animate && 'transition-[left,top] duration-200 ease-out', hidden && 'opacity-0')}
+      style={free ? { left: x, top: y, width: w, zIndex: z } : undefined}
+    >
+      <HierarchyHover item={item}>
+        <WorkItemCard item={item} data={data} features={features} pending={pending} reasons={reasons} onUpdate={onUpdate} grabbable />
+      </HierarchyHover>
+    </div>
+  );
+});
+
 const ghostTransform = (x, y) => `translate3d(${x}px, ${y}px, 0) rotate(-1.5deg) scale(1.03)`;
 
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
@@ -97,14 +117,18 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const [boardWidth, setBoardWidth] = useState(MIN_W + PAD * 2);
   const board = useRef(null);
   const cardEls = useRef(new Map());
+  const resizer = useRef(null);
   const computed = useRef(null);
   const lastDrop = useRef(null);
   const ghost = useRef(null);
 
-  const columns = buildColumns(data);
-  const byCol = new Map(columns.map((c) => [c.key, []]));
-  items.forEach((i) => byCol.get(columnKeyOf(i, data))?.push(i));
-  byCol.forEach((l) => l.sort(ORDER));
+  const { columns, byCol } = useMemo(() => {
+    const cols = buildColumns(data);
+    const map = new Map(cols.map((c) => [c.key, []]));
+    items.forEach((i) => map.get(columnKeyOf(i, data))?.push(i));
+    map.forEach((l) => l.sort(ORDER));
+    return { columns: cols, byCol: map };
+  }, [data, items]);
 
   const backlog = columns.find((c) => c.kind === 'backlog');
   const nextSprint = data.sprints.find((s) => s.timeFrame === 'future');
@@ -132,14 +156,32 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     return () => window.removeEventListener('keydown', onKey);
   }, [drawerOpen, drag]);
 
-  useLayoutEffect(() => {
-    let changed = null;
-    cardEls.current.forEach((el, id) => {
-      const h = el.offsetHeight;
-      if (heights[id] !== h) (changed ??= { ...heights })[id] = h;
-    });
-    if (changed) setHeights(changed);
-  });
+  // Card heights feed the whiteboard layout. A ResizeObserver reports them without forcing a layout on every render.
+  useEffect(() => {
+    const ro = new ResizeObserver((entries) =>
+      setHeights((prev) => {
+        let next = null;
+        for (const e of entries) {
+          const id = e.target.dataset.cardId;
+          const h = e.target.offsetHeight;
+          if (id && prev[id] !== h) (next ??= { ...prev })[id] = h;
+        }
+        return next ?? prev;
+      }),
+    );
+    cardEls.current.forEach((el) => ro.observe(el));
+    resizer.current = ro;
+    return () => ro.disconnect();
+  }, []);
+  const register = useCallback((id, el) => {
+    el.dataset.cardId = id;
+    cardEls.current.set(id, el);
+    resizer.current?.observe(el);
+    return () => {
+      resizer.current?.unobserve(el);
+      if (cardEls.current.get(id) === el) cardEls.current.delete(id);
+    };
+  }, []);
 
   const droppableFor = (col, item) => col.kind === 'backlog' || (col.kind === 'sprint' && canBeInSprint(item.type));
   const targetAt = (x, y) => document.elementFromPoint(x, y)?.closest('[data-drop]')?.dataset.drop ?? null;
@@ -219,8 +261,14 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     window.addEventListener('pointercancel', up);
   };
 
+  // Cards get a stable handler that always calls the latest startDrag, so they never re-render because of it.
+  const startRef = useRef(startDrag);
+  useLayoutEffect(() => {
+    startRef.current = startDrag;
+  });
+  const onStart = useCallback((e, item) => startRef.current(e, item), []);
+
   const dragged = drag && items.find((i) => i.id === drag.id);
-  const cardProps = (item) => ({ item, data, features, pending: pendingIds.has(item.id), reasons: reasonsById.get(item.id), onUpdate });
   const zoneState = (col) => {
     if (!dragged) return null;
     if (!droppableFor(col, dragged)) return 'blocked';
@@ -228,21 +276,11 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   };
   const zoneClass = (col) => ({ blocked: 'opacity-50', over: 'border-primary bg-primary/10' })[zoneState(col)];
 
-  const listCard = (item) => (
-    <div
-      key={item.id}
-      ref={(el) => (el ? cardEls.current.set(item.id, el) : cardEls.current.delete(item.id))}
-      onPointerDown={(e) => startDrag(e, item)}
-      className={cn('touch-none select-none', drag?.id === item.id && 'opacity-0')}
-    >
-      <HierarchyHover item={item}>
-        <WorkItemCard {...cardProps(item)} grabbable />
-      </HierarchyHover>
-    </div>
-  );
+  const cardProps = (item) => ({ item, data, features, pending: pendingIds.has(item.id), reasons: reasonsById.get(item.id), onUpdate });
+  const listCard = (item) => <PlanCard key={item.id} {...cardProps(item)} onStart={onStart} register={register} hidden={drag?.id === item.id} />;
 
   const nextList = next ? byCol.get(next.key) : [];
-  const placed = next ? layoutBoard(nextList, next.key, boardWidth, heights, layout) : null;
+  const placed = useMemo(() => next && layoutBoard(nextList, next.key, boardWidth, heights, layout), [nextList, next?.key, boardWidth, heights, layout]);
   computed.current = placed;
 
   return (
@@ -299,23 +337,22 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                 {nextList.map((item) => {
                   const p = placed.pos.get(item.id);
                   return (
-                    <div
+                    <PlanCard
                       key={item.id}
-                      ref={(el) => (el ? cardEls.current.set(item.id, el) : cardEls.current.delete(item.id))}
-                      onPointerDown={(e) => startDrag(e, item)}
-                      className={cn(
-                        'absolute touch-none',
-                        lastDrop.current !== item.id && 'transition-[left,top] duration-200 ease-out',
-                        drag?.id === item.id && 'opacity-0',
-                      )}
-                      style={{ left: p.x, top: p.y, width: placed.cardW, zIndex: p.z }}
-                    >
-                      <HierarchyHover item={item}>
-                        <WorkItemCard {...cardProps(item)} grabbable />
-                      </HierarchyHover>
-                    </div>
+                      {...cardProps(item)}
+                      onStart={onStart}
+                      register={register}
+                      hidden={drag?.id === item.id}
+                      free
+                      x={p.x}
+                      y={p.y}
+                      w={placed.cardW}
+                      z={p.z}
+                      animate={lastDrop.current !== item.id}
+                    />
                   );
                 })}
+
               </div>
             </div>
           </section>
