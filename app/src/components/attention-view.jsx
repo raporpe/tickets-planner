@@ -19,7 +19,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
   if (!sections.length) {
     return (
       <div className="flex flex-col items-center gap-2 py-24 text-muted-foreground">
-        <CircleCheck className="size-6 text-emerald-400" />
+        <CircleCheck className="size-6 text-emerald-600 dark:text-emerald-300" />
         <p className="text-sm">Everything is parented, planned, and tidy.</p>
       </div>
     );
@@ -44,7 +44,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
                 pending={pendingIds.has(item.id)}
                 onUpdate={onUpdate}
                 extra={
-                  <span className="text-amber-300/90">
+                  <span className="text-amber-800 dark:text-amber-200">
                     {(reasonsById.get(item.id) || []).filter((r) => s.keys.includes(r.key)).map((r) => r.label).join(', ')}
                   </span>
                 }

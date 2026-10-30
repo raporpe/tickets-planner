@@ -1,55 +1,96 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { ExternalLink, Loader2 } from 'lucide-react';
+import { ExternalLink, Loader2, TriangleAlert } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { StatePill, TypeLabel } from '@/components/work-item';
 import { api } from '@/api';
 import { cn } from '@/lib/utils';
+import { DONE_STATES, expectedParent, typeShort, typeStyle } from '@/lib/planning';
+
+/** Amber note when an item lacks the parent its type should have; nothing for top-level types. */
+export function MissingParent({ type, className }) {
+  const want = expectedParent(type);
+  if (!want) return null;
+  return (
+    <p className={cn('flex items-center gap-1.5 text-[12px] text-amber-800 dark:text-amber-200', className)}>
+      <TriangleAlert className="size-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
+      This {typeShort(type).toLowerCase()} isn't linked to a parent {want}.
+    </p>
+  );
+}
 
 /**
  * Tree from the top-most ancestor down to `self`, plus `self`'s direct children one level below.
- * Other items are clickable when `onOpen` is given.
+ * Each type's dot is a node; the trunk hangs from the parent's dot. Other items are clickable when `onOpen` is given.
  */
 export function HierarchyTree({ ancestors, self, children = [], onOpen, compact = false }) {
   const chain = [...ancestors.map((n, i) => ({ ...n, depth: i })), { ...self, self: true, depth: ancestors.length }];
   const nodes = [...chain, ...children.map((c) => ({ ...c, depth: ancestors.length + 1 }))];
-  const step = compact ? 12 : 16;
+  const step = compact ? 14 : 18;
   return (
     <ol className="flex flex-col">
-      {nodes.map((n) => (
-        <li key={n.id} className={cn('relative flex min-w-0 items-center gap-2', compact ? 'py-0.5' : 'py-1')} style={{ paddingLeft: n.depth * step }}>
-          {n.depth > 0 && (
-            <span
-              aria-hidden
-              className="absolute top-0 h-1/2 w-2.5 rounded-bl border-b border-l border-border"
-              style={{ left: (n.depth - 1) * step + 5 }}
-            />
-          )}
-          <span className="shrink-0 whitespace-nowrap">
-            <TypeLabel type={n.type} />
-          </span>
-          {n.self || !onOpen ? (
-            <span className={cn('min-w-0 truncate text-[13px]', n.self ? 'font-medium' : 'text-foreground/85')} aria-current={n.self || undefined}>
-              {n.title}
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="min-w-0 truncate text-left text-[13px] text-foreground/85 hover:text-primary hover:underline"
-              onClick={() => onOpen(n.id)}
-              title={`Open ${n.type} ${n.id}`}
+      {nodes.map((n) => {
+        const done = !n.self && DONE_STATES.includes(n.state);
+        return (
+          <li
+            key={n.id}
+            aria-level={n.depth + 1}
+            className={cn('relative min-w-0', compact ? 'py-px' : 'py-0.5')}
+            style={{ paddingLeft: n.depth * step }}
+          >
+            {n.depth > 0 && (
+              // From the previous row's dot down and across to this row's dot (rows share one height).
+              <span
+                aria-hidden
+                className="absolute -top-1/2 h-full rounded-bl-md border-b border-l border-stone-300 dark:border-stone-600"
+                style={{ left: (n.depth - 1) * step + 3.5, width: step - 6 }}
+              />
+            )}
+            <div
+              className={cn(
+                'relative flex min-w-0 items-center gap-2 rounded-md',
+                compact ? 'h-6 pr-1' : 'h-7 pr-1.5',
+                n.self && cn(typeStyle(n.type).tint, '-ml-1.5 pl-1.5'),
+                done && 'opacity-55',
+              )}
             >
-              {n.title}
-            </button>
-          )}
-          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{n.id}</span>
-          <StatePill state={n.state} className="shrink-0" />
-          {!n.self && !compact && (
-            <a href={n.url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-primary" aria-label={`Open ${n.id} in Azure DevOps`}>
-              <ExternalLink className="size-3" />
-            </a>
-          )}
-        </li>
-      ))}
+              <span className="shrink-0 whitespace-nowrap">
+                <TypeLabel type={n.type} />
+              </span>
+              {n.self || !onOpen ? (
+                <span
+                  className={cn('min-w-0 truncate text-[13px]', n.self ? 'font-semibold' : 'text-foreground/85')}
+                  aria-current={n.self ? 'true' : undefined}
+                  title={n.title}
+                >
+                  {n.title}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="min-w-0 truncate rounded-sm text-left text-[13px] text-foreground/85 hover:text-primary hover:underline hover:underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => onOpen(n.id)}
+                  title={`Open ${typeShort(n.type)} ${n.id}: ${n.title}`}
+                >
+                  {n.title}
+                </button>
+              )}
+              <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{n.id}</span>
+              <StatePill state={n.state} className="shrink-0" />
+              {!n.self && !compact && (
+                <a
+                  href={n.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="-m-1 shrink-0 rounded-sm p-1 text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  aria-label={`Open ${n.id} in Azure DevOps`}
+                >
+                  <ExternalLink className="size-3.5" />
+                </a>
+              )}
+            </div>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -122,7 +163,7 @@ function HoverTree({ item, parents, kids }) {
   return (
     <>
       <HierarchyTree ancestors={state.ancestors} self={item} children={state.children} compact />
-      {parents && state.ancestors.length === 0 && <p className="text-xs text-amber-300">No parent. This item isn't linked to any Feature.</p>}
+      {parents && state.ancestors.length === 0 && <MissingParent type={item.type} />}
       {kids && state.children.length === 0 && <p className="text-xs text-muted-foreground">No children.</p>}
     </>
   );

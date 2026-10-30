@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { FeaturePicker, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { RichEditor, RichView } from '@/components/rich-text';
-import { HierarchyTree } from '@/components/hierarchy';
+import { HierarchyTree, MissingParent } from '@/components/hierarchy';
 import { api } from '@/api';
 import { useDetail } from '@/lib/detail';
 import { cn } from '@/lib/utils';
@@ -56,8 +56,8 @@ function Hierarchy({ detail, onOpen }) {
   return (
     <section aria-label="Hierarchy">
       <SectionHeader>Hierarchy</SectionHeader>
-      {detail.ancestors.length === 0 && <p className="mb-1.5 text-[13px] text-amber-300">No parent. This item isn't linked to any Feature.</p>}
       <HierarchyTree ancestors={detail.ancestors} self={detail} children={detail.children} onOpen={onOpen} />
+      {detail.ancestors.length === 0 && <MissingParent type={detail.type} className="mt-1.5" />}
     </section>
   );
 }

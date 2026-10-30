@@ -50,14 +50,14 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
 
 const COLUMN_ICONS = {
   New: { icon: CircleDashed, tone: 'text-muted-foreground' },
-  'Backlog of ideas': { icon: Lightbulb, tone: 'text-amber-300' },
-  'Product & Design': { icon: PenTool, tone: 'text-pink-300' },
-  'Ready for development': { icon: ListChecks, tone: 'text-sky-300' },
-  'In Development': { icon: CodeXml, tone: 'text-blue-400' },
-  'QA/Testing': { icon: FlaskConical, tone: 'text-violet-300' },
-  'Ready to flight': { icon: PackageCheck, tone: 'text-teal-300' },
-  Flighting: { icon: Plane, tone: 'text-cyan-300' },
-  'Shipped/Closed': { icon: CircleCheckBig, tone: 'text-emerald-400' },
+  'Backlog of ideas': { icon: Lightbulb, tone: 'text-amber-600 dark:text-amber-300' },
+  'Product & Design': { icon: PenTool, tone: 'text-pink-600 dark:text-pink-300' },
+  'Ready for development': { icon: ListChecks, tone: 'text-sky-600 dark:text-sky-300' },
+  'In Development': { icon: CodeXml, tone: 'text-blue-600 dark:text-blue-300' },
+  'QA/Testing': { icon: FlaskConical, tone: 'text-violet-600 dark:text-violet-300' },
+  'Ready to flight': { icon: PackageCheck, tone: 'text-teal-600 dark:text-teal-300' },
+  Flighting: { icon: Plane, tone: 'text-cyan-600 dark:text-cyan-300' },
+  'Shipped/Closed': { icon: CircleCheckBig, tone: 'text-emerald-600 dark:text-emerald-300' },
 };
 
 function ColumnIcon({ column }) {
@@ -125,7 +125,7 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
             {feature.onBoard ? (
               <ColumnSelect feature={feature} columns={data.featureColumns} onMove={onMoveFeature} disabled={pendingIds.has(feature.id)} />
             ) : (
-              <Badge variant="outline" className="h-5 border-amber-400/40 text-[11px] text-amber-300">
+              <Badge variant="outline" className="h-5 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
                 Off board · {feature.iterationPath.replace(/^SAN SA\\/, '')}
               </Badge>
             )}

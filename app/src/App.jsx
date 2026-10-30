@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { KanbanSquare, Layers, Loader2, RefreshCw, Search, TriangleAlert } from 'lucide-react';
+import { KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,22 @@ import { ItemDetail } from '@/components/item-detail';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
 import { attentionReasons, matchesFilters } from '@/lib/planning';
+import { setTheme, useTheme } from '@/lib/theme';
+
+function ThemeToggle() {
+  const dark = useTheme() === 'dark';
+  return (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      onClick={() => setTheme(dark ? 'light' : 'dark')}
+      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={dark ? 'Light mode' : 'Dark mode'}
+    >
+      {dark ? <Sun /> : <Moon />}
+    </Button>
+  );
+}
 
 const TYPES = ['Task', 'Bug', 'User Story'];
 
@@ -186,7 +202,7 @@ export default function App() {
             <TabsTrigger value="attention" className="text-xs">
               <TriangleAlert /> Needs attention
               {attentionCount > 0 && (
-                <span className="ml-0.5 rounded bg-amber-500/20 px-1 text-[10px] font-semibold text-amber-300 tabular-nums">{attentionCount}</span>
+                <span className="ml-0.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 tabular-nums dark:bg-amber-300/15 dark:text-amber-200">{attentionCount}</span>
               )}
             </TabsTrigger>
           </TabsList>
@@ -198,6 +214,7 @@ export default function App() {
               <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh
             </Button>
+            <ThemeToggle />
           </div>
         </header>
 

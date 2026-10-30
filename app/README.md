@@ -32,4 +32,6 @@ Click any ticket to open its detail panel. It shows the full hierarchy, from the
 
 Hover a card or row while holding **Shift** to preview its parents, or **Ctrl** to preview its direct children, without opening the panel (hold both for the whole tree). Release the key to hide it.
 
+The sun/moon button in the header switches between light and dark themes. The choice is remembered in the browser; until you pick one, the app follows the OS setting.
+
 The app never creates iterations or changes team settings; it only edits work items you own.

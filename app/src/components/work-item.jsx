@@ -5,12 +5,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { columnRank, isDone, stateTone, typeShort, typeTone } from '@/lib/planning';
+import { columnRank, isDone, stateTone, typeShort, typeStyle } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 
 export function StatePill({ state, className }) {
   return (
-    <span className={cn('inline-flex h-5 items-center rounded px-1.5 text-[11px] font-medium ring-1 ring-inset', stateTone(state), className)}>
+    <span className={cn('inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium ring-1 ring-inset', stateTone(state), className)}>
       {state}
     </span>
   );
@@ -85,7 +85,7 @@ export function FeaturePicker({ item, features, onPick, disabled, compact }) {
           aria-label={`Parent feature of ${item.id}`}
           className={cn(
             'group/fp inline-flex min-w-0 max-w-full items-center gap-1 rounded px-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-            !current || !item.onBoard ? 'text-amber-300' : 'text-muted-foreground',
+            !current || !item.onBoard ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
             compact ? 'h-5' : 'h-7',
           )}
         >
@@ -139,7 +139,13 @@ export function ItemLink({ item, className }) {
 }
 
 export function TypeLabel({ type }) {
-  return <span className={cn('text-[11px] font-semibold uppercase tracking-wide', typeTone(type))}>{typeShort(type)}</span>;
+  const s = typeStyle(type);
+  return (
+    <span className={cn('inline-flex items-center gap-1.5 text-[12px] font-semibold', s.text)}>
+      <span aria-hidden className={cn('size-2 rounded-full', s.dot)} />
+      {typeShort(type)}
+    </span>
+  );
 }
 
 export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart, ...rest }) {
@@ -155,7 +161,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
         onDragStart?.(item.id);
       }}
       className={cn(
-        'group rounded-md border bg-card px-2.5 py-2 shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-[opacity,border-color] hover:border-foreground/20',
+        'group rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_oklch(0.4_0.02_60/0.06),0_2px_6px_-2px_oklch(0.4_0.02_60/0.08)] transition-[opacity,border-color,box-shadow] hover:border-foreground/15 hover:shadow-[0_2px_4px_oklch(0.4_0.02_60/0.06),0_6px_14px_-4px_oklch(0.4_0.02_60/0.12)] dark:shadow-[0_1px_2px_oklch(0_0_0/0.3)] dark:hover:shadow-[0_4px_12px_-2px_oklch(0_0_0/0.45)]',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
         !pending && 'cursor-grab active:cursor-grabbing',
@@ -167,7 +173,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
         {item.weeksCarried >= 4 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="rounded bg-orange-500/15 px-1 text-[10px] font-medium text-orange-300 tabular-nums">{item.weeksCarried}w</span>
+              <span className="rounded-full bg-orange-50 px-1.5 text-[10px] font-medium text-orange-800 ring-1 ring-orange-200 dark:bg-orange-300/10 dark:text-orange-200 dark:ring-orange-300/25 ring-inset tabular-nums">{item.weeksCarried}w</span>
             </TooltipTrigger>
             <TooltipContent>Carried across {item.weeksCarried} weekly tags</TooltipContent>
           </Tooltip>
@@ -191,7 +197,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
           {reasons
             .filter((r) => !['no-feature', 'off-board', 'stale'].includes(r.key))
             .map((r) => (
-              <span key={r.key} className="rounded bg-amber-500/10 px-1.5 text-[10px] text-amber-300">
+              <span key={r.key} className="rounded-full bg-amber-50 px-2 text-[10px] text-amber-800 ring-1 ring-amber-200 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25 ring-inset">
                 {r.label}
               </span>
             ))}

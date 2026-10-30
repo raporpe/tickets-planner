@@ -20,7 +20,7 @@ function ColumnHeader({ col, items }) {
           {col.sprint && !col.sprint.subscribed && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="h-4 border-amber-400/40 px-1.5 text-[10px] text-amber-300">
+                <Badge variant="outline" className="h-4 border-amber-200 bg-amber-50 px-1.5 text-[10px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
                   Not on team
                 </Badge>
               </TooltipTrigger>
