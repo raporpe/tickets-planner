@@ -439,7 +439,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
               </div>
             </header>
             <div ref={board} className="no-scrollbar relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="whiteboard-dots relative min-h-full select-none" style={{ height: boardHeight }} onDoubleClick={addNoteAt}>
+              <div className="whiteboard-dots relative isolate min-h-full select-none" style={{ height: boardHeight }} onDoubleClick={addNoteAt}>
                 {nextList.length === 0 && boardNotes.length === 0 && (
                   <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
                 )}
