@@ -18,7 +18,7 @@ const GAP = 10;
 const EST_H = 130;
 const NOTE_W = 288;
 const SLACK = 180; // free space below the lowest card, so there is always room to drop
-const NO_DRAG = 'a, input, textarea, select, [role="combobox"], [aria-haspopup], [data-no-drag]';
+const NO_DRAG = 'input, textarea, select, [role="combobox"], [aria-haspopup], [data-no-drag]';
 const ORDER = (a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCompare(b.type) || b.id - a.id;
 
 /**
@@ -333,8 +333,11 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
       window.removeEventListener('pointercancel', up);
       document.body.style.cursor = '';
       if (!started) return;
-      // The pointer-up ends in a click on the card; swallow it so a move doesn't open the detail panel.
-      const swallow = (c) => c.stopPropagation();
+      // The pointer-up ends in a click on the card (or its ADO link); swallow it so a move doesn't open anything.
+      const swallow = (c) => {
+        c.stopPropagation();
+        c.preventDefault();
+      };
       window.addEventListener('click', swallow, { capture: true, once: true });
       setTimeout(() => {
         window.removeEventListener('click', swallow, { capture: true });

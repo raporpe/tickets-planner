@@ -130,6 +130,7 @@ export function ItemLink({ item, className }) {
       href={item.url}
       target="_blank"
       rel="noreferrer"
+      draggable={false}
       className={cn('inline-flex items-center gap-0.5 text-[11px] text-muted-foreground tabular-nums hover:text-primary hover:underline', className)}
     >
       {item.id}
