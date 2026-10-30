@@ -25,7 +25,10 @@ export function MissingParent({ type, className }) {
 export function HierarchyTree({ ancestors, self, children = [], onOpen, compact = false }) {
   const chain = [...ancestors.map((n, i) => ({ ...n, depth: i })), { ...self, self: true, depth: ancestors.length }];
   const nodes = [...chain, ...children.map((c) => ({ ...c, depth: ancestors.length + 1 }))];
-  const step = compact ? 14 : 18;
+  const step = compact ? 16 : 20;
+  // Elbows start under the parent's dot (centre ≈ 3.5px in) and stop just short of the child's dot,
+  // or at the edge of the highlighted current row, so they never run under a label.
+  const elbow = (n) => ({ left: (n.depth - 1) * step + 3.5, width: step - 3.5 - (n.self ? 6 : 3) });
   return (
     <ol className="flex flex-col">
       {nodes.map((n) => {
@@ -42,7 +45,7 @@ export function HierarchyTree({ ancestors, self, children = [], onOpen, compact 
               <span
                 aria-hidden
                 className="absolute -top-1/2 h-full rounded-bl-md border-b border-l border-stone-300 dark:border-stone-600"
-                style={{ left: (n.depth - 1) * step + 3.5, width: step - 6 }}
+                style={elbow(n)}
               />
             )}
             <div
