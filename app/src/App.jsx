@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/sonner';
@@ -17,7 +16,7 @@ import { AttentionView } from '@/components/attention-view';
 import { ItemDetail } from '@/components/item-detail';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
-import { attentionReasons, matchesFilters } from '@/lib/planning';
+import { attentionReasons, canBeInSprint, matchesFilters } from '@/lib/planning';
 import { setTheme, useTheme } from '@/lib/theme';
 
 function ThemeToggle() {
@@ -34,8 +33,6 @@ function ThemeToggle() {
     </Button>
   );
 }
-
-const TYPES = ['Task', 'Bug', 'User Story'];
 
 function describe(patch, data, features) {
   if (patch.state) return `state → ${patch.state}`;
@@ -68,7 +65,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [pendingIds, setPendingIds] = useState(() => new Set());
-  const [filters, setFilters] = useState({ search: '', types: [], showClosed: false });
+  const [filters, setFilters] = useState({ search: '', showClosed: false });
   const [tab, setTab] = useState('plan');
   const [detailId, setDetailId] = useState(null);
   const detailCtx = useMemo(() => ({ openItem: setDetailId }), []);
@@ -107,6 +104,10 @@ export default function App() {
     [data, featureById],
   );
   const visibleItems = useMemo(() => (data?.items || []).filter((i) => matchesFilters(i, filters, featureById)), [data, filters, featureById]);
+  // Sprint planning shows only what can be sprinted (Tasks and Bugs); Stories live in By Feature / Needs attention.
+  const sprintItems = useMemo(() => visibleItems.filter((i) => canBeInSprint(i.type)), [visibleItems]);
+  const shownCount = tab === 'plan' ? sprintItems.length : visibleItems.length;
+  const totalCount = tab === 'plan' ? (data?.items || []).filter((i) => canBeInSprint(i.type)).length : data?.items.length;
   const attentionCount = useMemo(() => [...reasonsById.values()].filter((r) => r.length).length, [reasonsById]);
 
   const onUpdate = useCallback(
@@ -229,27 +230,13 @@ export default function App() {
               className="h-8 pl-8 text-xs"
             />
           </div>
-          <ToggleGroup
-            type="multiple"
-            variant="outline"
-            size="sm"
-            value={filters.types}
-            onValueChange={(types) => setFilters((f) => ({ ...f, types }))}
-            aria-label="Filter by type"
-          >
-            {TYPES.map((t) => (
-              <ToggleGroupItem key={t} value={t} className="h-8 px-2.5 text-xs">
-                {t === 'User Story' ? 'Stories' : `${t}s`}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             <Checkbox checked={filters.showClosed} onCheckedChange={(v) => setFilters((f) => ({ ...f, showClosed: !!v }))} />
             Show closed (last 21 days)
           </label>
           {data && (
             <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-              {visibleItems.length} of {data.items.length} items · synced {new Date(data.generatedAt).toLocaleTimeString()}
+              {shownCount} of {totalCount} items · synced {new Date(data.generatedAt).toLocaleTimeString()}
             </span>
           )}
         </div>
@@ -268,7 +255,7 @@ export default function App() {
           ) : (
             <>
               <TabsContent value="plan" className="h-full">
-                <PlanView {...viewProps} />
+                <PlanView {...viewProps} items={sprintItems} />
               </TabsContent>
               <TabsContent value="features" className="h-full overflow-y-auto">
                 <FeaturesView {...viewProps} onMoveFeature={onMoveFeature} />
@@ -296,3 +283,4 @@ export default function App() {
     </DetailContext.Provider>
   );
 }
+

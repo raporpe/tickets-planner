@@ -158,3 +158,17 @@
   .rich [style*="background"] { background: transparent !important; }
   .rich:where([contenteditable="true"]):empty::before { content: attr(data-placeholder); color: var(--muted-foreground); }
 }
+
+/* Sprint planning surfaces: scroll without visible bars, on a faint dotted whiteboard. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility whiteboard-dots {
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--foreground) 16%, transparent) 1px, transparent 1.5px);
+  background-size: 18px 18px;
+  background-position: 8px 8px;
+}

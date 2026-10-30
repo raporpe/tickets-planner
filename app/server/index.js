@@ -18,6 +18,7 @@ const BOARD_FIELDS = {
 };
 const P = encodeURIComponent(PROJECT);
 const WORK_TYPES = ['Task', 'Bug', 'User Story'];
+const SPRINT_TYPES = ['Task', 'Bug'];
 const RICH_FIELDS = ['System.Description', 'Microsoft.VSTS.TCM.ReproSteps', 'Microsoft.VSTS.Common.AcceptanceCriteria'];
 
 // ---------- auth ----------
@@ -320,7 +321,15 @@ app.patch('/api/workitems/:id', route(async (req) => {
     // Keep Markdown fields in Markdown; ADO would otherwise treat the value as HTML.
     if ((b.markdown || []).includes(ref)) ops.push({ op: 'add', path: `/multilineFieldsFormat/${ref}`, value: 'Markdown' });
   }
-  if (b.iterationPath) ops.push({ op: 'add', path: '/fields/System.IterationPath', value: b.iterationPath });
+  if (b.iterationPath) {
+    // Methodology: only Tasks and Bugs go into sprints; Stories and Features stay on the \Sprint backlog.
+    if (b.iterationPath.startsWith(`${sprintPath()}\\`)) {
+      const cur = await ado(`/_apis/wit/workitems/${id}?fields=System.WorkItemType&api-version=7.1`);
+      const type = cur.fields['System.WorkItemType'];
+      if (!SPRINT_TYPES.includes(type)) throw Object.assign(new Error(`${type === 'User Story' ? 'Stories' : `${type}s`} stay in ${sprintPath()}; only Tasks and Bugs go into sprints.`), { status: 400 });
+    }
+    ops.push({ op: 'add', path: '/fields/System.IterationPath', value: b.iterationPath });
+  }
   if (b.state) ops.push({ op: 'add', path: '/fields/System.State', value: b.state });
   if (b.unassign) ops.push({ op: 'add', path: '/fields/System.AssignedTo', value: '' });
   if ('parentId' in b) {

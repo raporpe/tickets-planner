@@ -5,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { FeaturePicker, ItemLink, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
-import { columnRank, isDone } from '@/lib/planning';
+import { columnRank, isDone, isInSprint } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 import { HierarchyHover } from '@/components/hierarchy';
 
@@ -127,6 +127,15 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
             ) : (
               <Badge variant="outline" className="h-5 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
                 Off board · {feature.iterationPath.replace(/^SAN SA\\/, '')}
+              </Badge>
+            )}
+            {feature.onBoard && isInSprint(feature.iterationPath, data) && (
+              <Badge
+                variant="outline"
+                className="h-5 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200"
+                title={`Features stay in ${data.backlogPath}; only Tasks and Bugs go into sprints.`}
+              >
+                In sprint {feature.iterationPath.split('\\').pop()}
               </Badge>
             )}
             {feature.lane && <span className="hidden text-[11px] text-muted-foreground lg:inline">{feature.lane}</span>}

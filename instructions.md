@@ -46,7 +46,7 @@ Rules:
    - New backlog work → iteration `SAN SA\Sprint`.
    - Work being done this sprint (Active, or closed now) → current sprint iteration so it shows on the Taskboard. At sprint planning, move items to the upcoming sprint.
    - **Every Task needs both links:** a parent chain to a board Feature **and** a sprint iteration. Tasks created as Closed (work done this sprint) still go in the current sprint, not the `\Sprint` backlog. After creating Tasks, verify parent + iteration live.
-   - User Stories and Features do **not** appear on the Taskboard — if a Story represents real work, create a child Task for it.
+   - **Only Tasks and Bugs go into sprints.** User Stories and Features always stay at iteration `SAN SA\Sprint` (never `Sprint\YYYY.NN`), whatever their state. They do not appear on the Taskboard — if a Story represents real work, create a child Task for it and sprint the Task.
 4. **Tags on every new Story/Task.** Current cycle tag (`FY26 C5` now) **and** a platform tag (`iOS`, `Android`, `Backend`, `MiniApps`, …), plus topic tags. Keep the weekly tag (Monday date, `YYYYMMDD`) on Tasks worked that week as Raul's personal filter.
 5. **No orphans.** Any open Task/Story/Bug whose parent chain does not reach a board Feature must be re-parented under the right Feature (or a new Feature proposed to the user).
 6. **Keep Features honest.** When creating/activating Tasks, check the parent Feature's column; flag Features that are in New with active Tasks, or in progress with no open children.

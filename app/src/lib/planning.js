@@ -81,9 +81,17 @@ export function isUnderSprintRoot(item, data) {
   return item.iterationPath === data.backlogPath || item.iterationPath.startsWith(`${data.backlogPath}\\`);
 }
 
+// Only Tasks and Bugs are planned into sprints; Stories and Features always stay on the `SAN SA\Sprint` backlog.
+export const SPRINT_TYPES = ['Task', 'Bug'];
+export const canBeInSprint = (type) => SPRINT_TYPES.includes(type);
+export const isInSprint = (path, data) => path.startsWith(`${data.backlogPath}\\`);
+
 export function attentionReasons(item, data, featureById) {
   if (isDone(item)) return [];
   const reasons = [];
+  if (!canBeInSprint(item.type) && isInSprint(item.iterationPath, data)) {
+    reasons.push({ key: 'not-sprintable', label: `${typeShort(item.type)} in a sprint`, severity: 'high' });
+  }
   if (!item.featureId) reasons.push({ key: 'no-feature', label: 'No parent Feature', severity: 'high' });
   else if (!item.onBoard) {
     const f = featureById.get(item.featureId);
@@ -104,7 +112,6 @@ export function attentionReasons(item, data, featureById) {
 
 export function matchesFilters(item, filters, featureById) {
   if (!filters.showClosed && isDone(item)) return false;
-  if (filters.types.length && !filters.types.includes(item.type)) return false;
   const q = filters.search.trim().toLowerCase();
   if (!q) return true;
   const feature = featureById.get(item.featureId);
@@ -115,3 +122,4 @@ export function matchesFilters(item, filters, featureById) {
     (feature && feature.title.toLowerCase().includes(q))
   );
 }
+

@@ -24,7 +24,7 @@ Tokens stay in the server process memory. No ticket data is stored locally; Azur
 
 ## Views
 
-- **Sprint planning** – Backlog and one column per `SAN SA\Sprint` iteration. Drag cards between columns to change the iteration; change state and parent Feature inline.
+- **Sprint planning** – Two areas: the Backlog as a one-card-wide list, and the next sprint (the earliest `SAN SA\Sprint` iteration that hasn't started) as a dotted whiteboard. On the whiteboard you drop a card anywhere, overlap or cluster cards to group them, and they stay where you left them (saved in this browser only, never in ADO); the grid icon ("Tidy up") forgets those positions. The sprint in progress lives in a drawer at the bottom: click its handle to slide it up, drag tickets out to the Backlog or next sprint, Esc or click again to tuck it away. Other sprints or legacy iterations that still hold tickets also appear in the drawer. Dragging a card to another area changes its iteration; state and parent Feature change inline. Only Tasks and Bugs are shown and can go into a sprint; Stories (and Features) stay in `SAN SA\Sprint` and are managed from By Feature, and any found in a sprint are flagged under Needs attention.
 - **By Feature** – my items grouped under their board Feature, with off-board Features flagged. The column badge on each Feature is a dropdown that moves it on the team's Features board; the Feature's state follows the column's mapping, and moving it to Shipped/Closed asks for confirmation.
 - **Needs attention** – items without a board Feature, in legacy/past iterations, active but unplanned, Stories whose children are all closed, or carried 4+ weeks.
 

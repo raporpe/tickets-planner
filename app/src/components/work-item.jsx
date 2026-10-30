@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { columnRank, isDone, stateTone, typeShort, typeStyle } from '@/lib/planning';
+import { canBeInSprint, columnRank, isDone, stateTone, typeShort, typeStyle } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 
 export function StatePill({ state, className }) {
@@ -49,9 +49,9 @@ export function SprintSelect({ item, data, onChange, disabled, className }) {
       <SelectContent position="popper">
         <SelectItem value={data.backlogPath}>Backlog</SelectItem>
         <SelectGroup>
-          <SelectLabel>Sprints</SelectLabel>
+          <SelectLabel>{canBeInSprint(item.type) ? 'Sprints' : 'Sprints (Tasks and Bugs only)'}</SelectLabel>
           {data.sprints.map((s) => (
-            <SelectItem key={s.path} value={s.path}>
+            <SelectItem key={s.path} value={s.path} disabled={!canBeInSprint(item.type) && s.path !== item.iterationPath}>
               {s.name} <span className="text-muted-foreground">· {s.timeFrame}</span>
             </SelectItem>
           ))}
@@ -148,23 +148,26 @@ export function TypeLabel({ type }) {
   );
 }
 
-export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart, ...rest }) {
+export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart, grabbable, className, ...rest }) {
   const { openItem } = useDetail();
+  const grab = !pending && (onDragStart || grabbable);
   return (
     <article
       {...rest}
-      draggable={!pending}
+      draggable={!pending && !!onDragStart}
       onClick={openOnClick(openItem, item.id)}
       onDragStart={(e) => {
+        if (!onDragStart) return;
         e.dataTransfer.setData('text/plain', String(item.id));
         e.dataTransfer.effectAllowed = 'move';
-        onDragStart?.(item.id);
+        onDragStart(item.id);
       }}
       className={cn(
         'group rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_oklch(0.4_0.02_60/0.06),0_2px_6px_-2px_oklch(0.4_0.02_60/0.08)] transition-[opacity,border-color,box-shadow] hover:border-foreground/15 hover:shadow-[0_2px_4px_oklch(0.4_0.02_60/0.06),0_6px_14px_-4px_oklch(0.4_0.02_60/0.12)] dark:shadow-[0_1px_2px_oklch(0_0_0/0.3)] dark:hover:shadow-[0_4px_12px_-2px_oklch(0_0_0/0.45)]',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
-        !pending && 'cursor-grab active:cursor-grabbing',
+        grab && 'cursor-grab active:cursor-grabbing',
+        className,
       )}
     >
       <div className="flex items-center gap-2">
