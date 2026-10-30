@@ -383,9 +383,29 @@ async function getAncestors(wi) {
   return ancestors;
 }
 
+// Direct children, open ones first.
+async function getChildren(wi) {
+  const childIds = childrenOf(wi);
+  const isDone = (s) => ['Closed', 'Done', 'Removed', 'Resolved', 'Shipped'].includes(s);
+  return (childIds.length ? await getItems(childIds) : [])
+    .map((c) => ({
+      id: c.id,
+      title: c.fields['System.Title'],
+      type: c.fields['System.WorkItemType'],
+      state: c.fields['System.State'],
+      url: editUrl(c.id),
+    }))
+    .sort((a, b) => isDone(a.state) - isDone(b.state) || a.id - b.id);
+}
+
 app.get('/api/workitems/:id/ancestors', route(async (req) => {
   const wi = await ado(`/_apis/wit/workitems/${Number(req.params.id)}?$expand=relations&api-version=7.1`);
   return { ancestors: await getAncestors(wi) };
+}));
+
+app.get('/api/workitems/:id/children', route(async (req) => {
+  const wi = await ado(`/_apis/wit/workitems/${Number(req.params.id)}?$expand=relations&api-version=7.1`);
+  return { children: await getChildren(wi) };
 }));
 
 app.get('/api/workitems/:id', route(async (req) => {
@@ -397,17 +417,7 @@ app.get('/api/workitems/:id', route(async (req) => {
   const f = wi.fields;
   const ancestors = await getAncestors(wi);
   const parent = ancestors.at(-1) || null;
-  const childIds = childrenOf(wi);
-  const isDone = (s) => ['Closed', 'Done', 'Removed', 'Resolved', 'Shipped'].includes(s);
-  const children = (childIds.length ? await getItems(childIds) : [])
-    .map((c) => ({
-      id: c.id,
-      title: c.fields['System.Title'],
-      type: c.fields['System.WorkItemType'],
-      state: c.fields['System.State'],
-      url: editUrl(c.id),
-    }))
-    .sort((a, b) => isDone(a.state) - isDone(b.state) || a.id - b.id);
+  const children = await getChildren(wi);
   return {
     id: wi.id,
     rev: wi.rev,
@@ -427,7 +437,7 @@ app.get('/api/workitems/:id', route(async (req) => {
     priority: f['Microsoft.VSTS.Common.Priority'],
     parent,
     ancestors,
-    childCount: childIds.length,
+    childCount: children.length,
     children,
     fields: Object.fromEntries(RICH_FIELDS.map((r) => [r, f[r] ?? null])),
     markdown: RICH_FIELDS.filter((r) => String(wi.multilineFieldsFormat?.[r] || '').toLowerCase() === 'markdown'),

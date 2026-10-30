@@ -21,6 +21,7 @@ export const api = {
   overview: () => request('GET', '/overview'),
   update: (id, patch) => request('PATCH', `/workitems/${id}`, patch),
   ancestors: (id) => request('GET', `/workitems/${id}/ancestors`),
+  children: (id) => request('GET', `/workitems/${id}/children`),
   moveFeature: (id, column) => request('PATCH', `/features/${id}/column`, { column }),
   detail: (id) => request('GET', `/workitems/${id}`),
   addComment: (id, text) => request('POST', `/workitems/${id}/comments`, { text }),

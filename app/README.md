@@ -30,6 +30,6 @@ Tokens stay in the server process memory. No ticket data is stored locally; Azur
 
 Click any ticket to open its detail panel. It shows the full hierarchy, from the top-most ancestor (Strategic Priority, Epic, …) down to the ticket and its direct children (open ones first); click any level to open it. From there you can change the state, Feature and sprint; edit the title, description, repro steps and acceptance criteria; and add comments or edit your own. Fields stored as Markdown in Azure DevOps are edited as Markdown, and HTML fields use a rich-text editor. If someone else changed the item since you opened it, the save is rejected and their version is shown.
 
-Hold **Ctrl** while hovering a card or row to preview its hierarchy without opening the panel. Release Ctrl to hide it.
+Hover a card or row while holding **Shift** to preview its parents, or **Ctrl** to preview its direct children, without opening the panel (hold both for the whole tree). Release the key to hide it.
 
 The app never creates iterations or changes team settings; it only edits work items you own.

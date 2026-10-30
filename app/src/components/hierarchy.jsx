@@ -54,87 +54,99 @@ export function HierarchyTree({ ancestors, self, children = [], onOpen, compact 
   );
 }
 
-// ---- Ctrl key state, shared by every card ----
-let ctrlDown = false;
+// ---- Modifier key state, shared by every card: Shift → parents, Ctrl → children ----
+let keys = '';
 const listeners = new Set();
-const setCtrl = (v) => {
-  if (v === ctrlDown) return;
-  ctrlDown = v;
+const isEditable = (t) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+const setKeys = (e) => {
+  // Typing capitals in a field shouldn't pop up a card's parents.
+  const shift = e.shiftKey && !(e.type === 'keydown' && isEditable(e.target));
+  const v = (shift ? 's' : '') + (e.ctrlKey ? 'c' : '');
+  if (v === keys) return;
+  keys = v;
   listeners.forEach((l) => l());
 };
 if (typeof window !== 'undefined') {
-  window.addEventListener('keydown', (e) => setCtrl(e.ctrlKey));
-  window.addEventListener('keyup', (e) => setCtrl(e.ctrlKey));
-  window.addEventListener('blur', () => setCtrl(false));
+  window.addEventListener('keydown', setKeys);
+  window.addEventListener('keyup', setKeys);
+  window.addEventListener('blur', () => setKeys({}));
 }
 const subscribe = (l) => (listeners.add(l), () => listeners.delete(l));
-const useCtrlKey = () => useSyncExternalStore(subscribe, () => ctrlDown);
+const useModifierKeys = () => useSyncExternalStore(subscribe, () => keys);
 
-// Ancestors rarely change during a session; clearAncestors() after any re-parent.
-const cache = new Map();
-function loadAncestors(id) {
-  if (!cache.has(id)) {
-    cache.set(
-      id,
-      api.ancestors(id).then(
-        (r) => r.ancestors,
-        (e) => {
-          cache.delete(id);
-          throw e;
-        },
-      ),
-    );
+// Session caches; clearAncestors() after any re-parent. Children expire quickly since they change more often.
+const ancestorCache = new Map();
+const childCache = new Map();
+const CHILD_TTL = 30_000;
+function cached(cache, id, load, ttl = Infinity) {
+  const hit = cache.get(id);
+  if (!hit || Date.now() - hit.at > ttl) {
+    const promise = load(id).catch((e) => {
+      cache.delete(id);
+      throw e;
+    });
+    cache.set(id, { at: Date.now(), promise });
+    return promise;
   }
-  return cache.get(id);
+  return hit.promise;
 }
-export const clearAncestors = () => cache.clear();
+const loadAncestors = (id) => cached(ancestorCache, id, (i) => api.ancestors(i).then((r) => r.ancestors));
+const loadChildren = (id) => cached(childCache, id, (i) => api.children(i).then((r) => r.children), CHILD_TTL);
+export const clearAncestors = () => {
+  ancestorCache.clear();
+  childCache.clear();
+};
 
-function HoverTree({ item }) {
-  const [state, setState] = useState({ id: null });
+function HoverTree({ item, parents, kids }) {
+  const want = `${item.id}:${parents}:${kids}`;
+  const [state, setState] = useState({ want: null });
   useEffect(() => {
     let live = true;
-    loadAncestors(item.id).then(
-      (ancestors) => live && setState({ id: item.id, ancestors }),
-      (e) => live && setState({ id: item.id, error: e.message }),
+    Promise.all([parents ? loadAncestors(item.id) : [], kids ? loadChildren(item.id) : []]).then(
+      ([ancestors, children]) => live && setState({ want, ancestors, children }),
+      (e) => live && setState({ want, error: e.message }),
     );
     return () => {
       live = false;
     };
-  }, [item.id]);
+  }, [item.id, parents, kids, want]);
 
-  if (state.id !== item.id) {
+  if (state.want !== want) {
     return (
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> Loading hierarchy…
+        <Loader2 className="size-3.5 animate-spin" /> Loading {parents && kids ? 'hierarchy' : parents ? 'parents' : 'children'}…
       </p>
     );
   }
   if (state.error) return <p className="text-xs text-destructive">{state.error}</p>;
   return (
     <>
-      <HierarchyTree ancestors={state.ancestors} self={item} compact />
-      {state.ancestors.length === 0 && <p className="text-xs text-amber-300">No parent. This item isn't linked to any Feature.</p>}
+      <HierarchyTree ancestors={state.ancestors} self={item} children={state.children} compact />
+      {parents && state.ancestors.length === 0 && <p className="text-xs text-amber-300">No parent. This item isn't linked to any Feature.</p>}
+      {kids && state.children.length === 0 && <p className="text-xs text-muted-foreground">No children.</p>}
     </>
   );
 }
 
 /**
- * Wraps a ticket card/row: hovering it while holding Ctrl shows its full hierarchy.
- * The child must accept a ref (a DOM element).
+ * Wraps a ticket card/row: hover while holding Shift to see its parents, Ctrl to see its children
+ * (both for the whole tree). The child must accept a ref (a DOM element).
  */
 export function HierarchyHover({ item, children }) {
   const [hovered, setHovered] = useState(false);
-  const ctrl = useCtrlKey();
-  const open = hovered && ctrl;
+  const mods = useModifierKeys();
+  const parents = mods.includes('s');
+  const kids = mods.includes('c');
+  const open = hovered && (parents || kids);
   return (
     <Popover open={open}>
       <PopoverAnchor
         asChild
         onPointerEnter={(e) => {
           setHovered(true);
-          setCtrl(e.ctrlKey);
+          setKeys(e);
         }}
-        onPointerMove={(e) => setCtrl(e.ctrlKey)}
+        onPointerMove={setKeys}
         onPointerLeave={() => setHovered(false)}
       >
         {children}
@@ -147,8 +159,10 @@ export function HierarchyHover({ item, children }) {
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
-          <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Hierarchy</p>
-          <HoverTree item={item} />
+          <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+            {parents && kids ? 'Hierarchy' : parents ? 'Parents' : 'Children'}
+          </p>
+          <HoverTree item={item} parents={parents} kids={kids} />
         </PopoverContent>
       )}
     </Popover>
