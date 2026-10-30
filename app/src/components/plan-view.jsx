@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarClock, ChevronUp, Inbox, History, LayoutGrid } from 'lucide-react';
+import { CalendarClock, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { WorkItemCard } from '@/components/work-item';
 import { HierarchyHover } from '@/components/hierarchy';
 import { useBoardLayout } from '@/lib/board-layout';
+import { useBoardNotes } from '@/lib/board-notes';
 import { buildColumns, canBeInSprint, columnKeyOf, isDone } from '@/lib/planning';
 
 const MIN_W = 236;
@@ -15,6 +16,7 @@ const MAX_W = 320;
 const PAD = 12;
 const GAP = 10;
 const EST_H = 130;
+const NOTE_W = 288;
 const SLACK = 180; // free space below the lowest card, so there is always room to drop
 const NO_DRAG = 'a, input, textarea, select, [role="combobox"], [aria-haspopup], [data-no-drag]';
 const ORDER = (a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCompare(b.type) || b.id - a.id;
@@ -107,10 +109,94 @@ const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons
   );
 });
 
+/**
+ * A free-floating note on the whiteboard: plain text you can drop next to a group of cards.
+ * Drag to move, double-click to edit, empty it (or press ×) to delete.
+ */
+function BoardNote({ id, note, left, top, editing, onEdit, onChange, onRemove, toPos }) {
+  const el = useRef(null);
+  const startMove = (e) => {
+    if (editing || e.button !== 0 || e.target.closest('button')) return;
+    e.stopPropagation();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let moved = false;
+    const move = (ev) => {
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+      el.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    };
+    const up = (ev) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (el.current) el.current.style.transform = '';
+      if (moved && ev.type === 'pointerup') onChange(id, toPos(left + ev.clientX - sx, top + ev.clientY - sy));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  const finish = (e) => {
+    if (!e.currentTarget.value.trim()) onRemove(id);
+    onEdit(null);
+  };
+  return (
+    <div
+      ref={el}
+      data-note
+      onPointerDown={startMove}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onEdit(id);
+      }}
+      className={cn('group absolute z-[5000] touch-none', !editing && 'cursor-grab active:cursor-grabbing')}
+      style={{ left, top, maxWidth: NOTE_W }}
+    >
+      {editing ? (
+        <textarea
+          autoFocus
+          rows={1}
+          aria-label="Note"
+          placeholder="Write a note…"
+          defaultValue={note.text}
+          onChange={(e) => onChange(id, { text: e.target.value })}
+          onBlur={finish}
+          onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) e.currentTarget.blur();
+          }}
+          className="block min-w-40 resize-none rounded-md border-0 bg-background/90 px-2 py-1 text-sm leading-snug font-medium text-foreground shadow-sm ring-2 ring-ring outline-none [field-sizing:content] placeholder:text-muted-foreground"
+          style={{ maxWidth: NOTE_W }}
+        />
+      ) : (
+        <>
+          <p className="rounded-md bg-background/60 px-2 py-1 text-sm leading-snug font-medium break-words whitespace-pre-wrap text-foreground/80 transition-[background-color,box-shadow] group-hover:bg-background/90 group-hover:ring-1 group-hover:ring-border">
+            {note.text}
+          </p>
+          <button
+            type="button"
+            aria-label="Delete note"
+            onClick={() => onRemove(id)}
+            className="absolute -top-2 -right-2 grid size-5 place-items-center rounded-full border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 hover:text-foreground focus-visible:opacity-100"
+          >
+            <X className="size-3" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 const ghostTransform = (x, y) => `translate3d(${x}px, ${y}px, 0) rotate(-1.5deg) scale(1.03)`;
 
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
   const { layout, place, clearColumn } = useBoardLayout();
+  const { notes, addNote, updateNote, removeNote } = useBoardNotes();
+  const [editingNote, setEditingNote] = useState(null);
   const [drag, setDrag] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [heights, setHeights] = useState({});
@@ -283,6 +369,19 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const placed = useMemo(() => next && layoutBoard(nextList, next.key, boardWidth, heights, layout), [nextList, next?.key, boardWidth, heights, layout]);
   computed.current = placed;
 
+  const noteUsable = Math.max(0, boardWidth - NOTE_W - PAD * 2);
+  const notePos = useCallback(
+    (px, py) => ({ x: noteUsable > 0 ? Math.min(1, Math.max(0, (px - PAD) / noteUsable)) : 0, y: Math.max(PAD, Math.round(py)) }),
+    [noteUsable],
+  );
+  const boardNotes = next ? Object.entries(notes).filter(([, n]) => n.col === next.key) : [];
+  const boardHeight = placed ? Math.max(placed.height, ...boardNotes.map(([, n]) => n.y + 120 + SLACK)) : 0;
+  const addNoteAt = (e) => {
+    if (e.target.closest('[data-card-id], [data-note]')) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setEditingNote(addNote({ col: next.key, ...notePos(e.clientX - r.left - 8, e.clientY - r.top - 14) }));
+  };
+
   return (
     // While dragging, cards ignore the pointer so hovering them costs nothing (and drop targets resolve straight to the column).
     <div className={cn('relative h-full overflow-hidden', drag && '[&_article]:pointer-events-none')}>
@@ -332,8 +431,24 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
               </div>
             </header>
             <div ref={board} className="no-scrollbar relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="whiteboard-dots relative min-h-full select-none" style={{ height: placed.height }}>
-                {nextList.length === 0 && <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here.</p>}
+              <div className="whiteboard-dots relative min-h-full select-none" style={{ height: boardHeight }} onDoubleClick={addNoteAt}>
+                {nextList.length === 0 && boardNotes.length === 0 && (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
+                )}
+                {boardNotes.map(([id, n]) => (
+                  <BoardNote
+                    key={id}
+                    id={id}
+                    note={n}
+                    left={PAD + n.x * noteUsable}
+                    top={n.y}
+                    editing={editingNote === id}
+                    onEdit={setEditingNote}
+                    onChange={updateNote}
+                    onRemove={removeNote}
+                    toPos={notePos}
+                  />
+                ))}
                 {nextList.map((item) => {
                   const p = placed.pos.get(item.id);
                   return (
