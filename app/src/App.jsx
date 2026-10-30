@@ -120,6 +120,30 @@ export default function App() {
     [data, load, checkAuth],
   );
 
+  const onMoveFeature = useCallback(
+    async (feature, column) => {
+      const setFeature = (patch) => setData((d) => ({ ...d, features: d.features.map((f) => (f.id === feature.id ? { ...f, ...patch } : f)) }));
+      setPendingIds((s) => new Set(s).add(feature.id));
+      setFeature({ column });
+      try {
+        const r = await api.moveFeature(feature.id, column);
+        setFeature({ column: r.column, state: r.state });
+        toast.success(`Feature #${feature.id} moved to ${r.column}`);
+      } catch (e) {
+        setFeature({ column: feature.column, state: feature.state });
+        toast.error(`Feature #${feature.id}: could not move to ${column}`, { description: e.message });
+        if (e.status === 401) checkAuth();
+      } finally {
+        setPendingIds((s) => {
+          const n = new Set(s);
+          n.delete(feature.id);
+          return n;
+        });
+      }
+    },
+    [checkAuth],
+  );
+
   if (!auth) {
     return (
       <div className="grid min-h-svh place-items-center">
@@ -226,7 +250,7 @@ export default function App() {
                 <PlanView {...viewProps} />
               </TabsContent>
               <TabsContent value="features" className="h-full overflow-y-auto">
-                <FeaturesView {...viewProps} />
+                <FeaturesView {...viewProps} onMoveFeature={onMoveFeature} />
               </TabsContent>
               <TabsContent value="attention" className="h-full overflow-y-auto">
                 <AttentionView {...viewProps} items={data.items} />

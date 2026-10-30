@@ -122,6 +122,11 @@ async function getBoardFeatureIds() {
   return r.workItems.map((w) => w.target.id);
 }
 
+async function getFeatureColumns() {
+  const r = await ado(`/${P}/${TEAM_ID}/_apis/work/boards/Features/columns?api-version=7.1`);
+  return r.value.map((c) => ({ name: c.name, state: c.stateMappings?.Feature, type: c.columnType }));
+}
+
 function summarizeFeature(wi, onBoard) {
   const f = wi.fields;
   return {
@@ -143,11 +148,12 @@ async function buildOverview() {
       AND [System.WorkItemType] IN (${WORK_TYPES.map((t) => `'${t}'`).join(',')})
       AND ([System.State] NOT IN ('Closed','Removed','Done') OR ([System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 21))`,
   };
-  const [q, sprints, boardIds, me] = await Promise.all([
+  const [q, sprints, boardIds, me, featureColumns] = await Promise.all([
     ado(`/${P}/_apis/wit/wiql?api-version=7.1`, { method: 'POST', body: wiql }),
     getSprints(),
     getBoardFeatureIds(),
     ado('/_apis/connectionData'),
+    getFeatureColumns(),
   ]);
   const board = new Set(boardIds);
   const all = new Map();
@@ -222,6 +228,7 @@ async function buildOverview() {
     backlogPath: sprintPath(),
     sprints,
     features: [...features.values()],
+    featureColumns,
     items,
     states,
     generatedAt: new Date().toISOString(),
@@ -287,6 +294,18 @@ app.post('/api/auth/device', route(async () => {
 app.get('/api/auth/device', route(async () => device || { status: 'idle' }));
 
 app.get('/api/overview', route(() => buildOverview()));
+
+// Move a Feature to another column of the team's Features board. The column decides the state.
+app.patch('/api/features/:id/column', route(async (req) => {
+  const id = Number(req.params.id);
+  const col = (await getFeatureColumns()).find((c) => c.name === req.body?.column);
+  if (!col) throw Object.assign(new Error(`Unknown board column "${req.body?.column}"`), { status: 400 });
+  const ops = [{ op: 'add', path: '/fields/System.State', value: col.state }];
+  // Incoming/outgoing columns are derived from the state alone; ADO rejects writing them.
+  if (col.type === 'inProgress') ops.push({ op: 'add', path: `/fields/${BOARD_FIELDS.column}`, value: col.name });
+  const wi = await ado(`/_apis/wit/workitems/${id}?api-version=7.1`, { method: 'PATCH', body: ops, contentType: 'application/json-patch+json' });
+  return { id: wi.id, state: wi.fields['System.State'], column: wi.fields[BOARD_FIELDS.column] || col.name };
+}));
 
 app.patch('/api/workitems/:id', route(async (req) => {
   const id = Number(req.params.id);

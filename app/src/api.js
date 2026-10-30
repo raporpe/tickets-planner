@@ -20,6 +20,7 @@ export const api = {
   pollDevice: () => request('GET', '/auth/device'),
   overview: () => request('GET', '/overview'),
   update: (id, patch) => request('PATCH', `/workitems/${id}`, patch),
+  moveFeature: (id, column) => request('PATCH', `/features/${id}/column`, { column }),
   detail: (id) => request('GET', `/workitems/${id}`),
   addComment: (id, text) => request('POST', `/workitems/${id}/comments`, { text }),
   editComment: (id, commentId, text, format) => request('PATCH', `/workitems/${id}/comments/${commentId}`, { text, format }),

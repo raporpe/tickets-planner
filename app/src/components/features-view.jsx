@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ChevronRight, ExternalLink } from 'lucide-react';
+import { ChevronRight, Circle, CircleCheckBig, CircleDashed, CodeXml, ExternalLink, FlaskConical, Lightbulb, ListChecks, PackageCheck, PenTool, Plane } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { FeaturePicker, ItemLink, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { columnRank, isDone } from '@/lib/planning';
@@ -44,7 +45,64 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
   );
 }
 
-function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate }) {
+const COLUMN_ICONS = {
+  New: { icon: CircleDashed, tone: 'text-muted-foreground' },
+  'Backlog of ideas': { icon: Lightbulb, tone: 'text-amber-300' },
+  'Product & Design': { icon: PenTool, tone: 'text-pink-300' },
+  'Ready for development': { icon: ListChecks, tone: 'text-sky-300' },
+  'In Development': { icon: CodeXml, tone: 'text-blue-400' },
+  'QA/Testing': { icon: FlaskConical, tone: 'text-violet-300' },
+  'Ready to flight': { icon: PackageCheck, tone: 'text-teal-300' },
+  Flighting: { icon: Plane, tone: 'text-cyan-300' },
+  'Shipped/Closed': { icon: CircleCheckBig, tone: 'text-emerald-400' },
+};
+
+function ColumnIcon({ column }) {
+  const { icon: Icon, tone } = COLUMN_ICONS[column] || { icon: Circle, tone: 'text-muted-foreground' };
+  return <Icon aria-hidden className={cn('size-3.5 shrink-0', tone)} />;
+}
+
+function ColumnSelect({ feature, columns, onMove, disabled }) {
+  const value = feature.column || '';
+  return (
+    <Select
+      value={value}
+      disabled={disabled || !columns?.length}
+      onValueChange={(column) => {
+        if (column === value) return;
+        const col = columns.find((c) => c.name === column);
+        if (col?.type === 'outgoing' && !window.confirm(`Move "${feature.title}" to ${column}? This closes the Feature on the team board.`)) return;
+        onMove(feature, column);
+      }}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label={`Board column of Feature ${feature.id}`}
+        className="h-5! gap-1 rounded-full border-0 bg-secondary px-2 py-0 text-[11px] font-medium text-secondary-foreground shadow-none hover:bg-secondary/70 [&>svg:last-child]:size-3"
+      >
+        <SelectValue placeholder="On board">
+          <span className="flex items-center gap-1.5">
+            {value && <ColumnIcon column={value} />}
+            {value || 'On board'}
+          </span>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" align="start">
+        {(columns || []).map((c) => (
+          <SelectItem key={c.name} value={c.name}>
+            <span className="flex w-full items-center gap-2">
+              <ColumnIcon column={c.name} />
+              {c.name}
+              <span className="ml-auto text-[11px] text-muted-foreground">{c.state}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, onMoveFeature }) {
   const [open, setOpen] = useState(true);
   const openCount = items.filter((i) => !isDone(i)).length;
   return (
@@ -62,9 +120,7 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate }) 
         {feature && (
           <>
             {feature.onBoard ? (
-              <Badge variant="secondary" className="h-5 text-[11px]">
-                {feature.column || 'On board'}
-              </Badge>
+              <ColumnSelect feature={feature} columns={data.featureColumns} onMove={onMoveFeature} disabled={pendingIds.has(feature.id)} />
             ) : (
               <Badge variant="outline" className="h-5 border-amber-400/40 text-[11px] text-amber-300">
                 Off board · {feature.iterationPath.replace(/^SAN SA\\/, '')}
@@ -100,7 +156,7 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate }) 
   );
 }
 
-export function FeaturesView({ data, items, features, pendingIds, onUpdate }) {
+export function FeaturesView({ data, items, features, pendingIds, onUpdate, onMoveFeature }) {
   const [showEmpty, setShowEmpty] = useState(false);
   const groups = new Map();
   items.forEach((i) => groups.set(i.featureId, [...(groups.get(i.featureId) || []), i]));
@@ -131,6 +187,7 @@ export function FeaturesView({ data, items, features, pendingIds, onUpdate }) {
           features={features}
           pendingIds={pendingIds}
           onUpdate={onUpdate}
+          onMoveFeature={onMoveFeature}
         />
       ))}
       {ordered.length === 0 && <p className="py-12 text-center text-sm text-muted-foreground">No items match the current filters.</p>}
