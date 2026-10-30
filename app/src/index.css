@@ -172,3 +172,45 @@
   background-size: 18px 18px;
   background-position: 8px 8px;
 }
+
+/* Picking a card up and putting it down: it lifts with a little spring, and settles back with a soft wobble. */
+:root {
+  --card-lift: oklch(0.35 0.04 60 / 0.32);
+}
+.dark {
+  --card-lift: oklch(0 0 0 / 0.65);
+}
+
+@keyframes card-pickup {
+  from {
+    transform: none;
+    filter: drop-shadow(0 1px 1px transparent);
+  }
+  to {
+    transform: rotate(-1.5deg) scale(1.03);
+    filter: drop-shadow(0 14px 18px var(--card-lift));
+  }
+}
+
+@keyframes card-settle {
+  from {
+    transform: rotate(-1.5deg) scale(1.03);
+    filter: drop-shadow(0 14px 18px var(--card-lift));
+  }
+  55% {
+    transform: rotate(0.4deg) scale(0.995);
+    filter: drop-shadow(0 2px 4px transparent);
+  }
+  to {
+    transform: none;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
+@utility animate-card-pickup {
+  animation: card-pickup 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility animate-card-settle {
+  animation: card-settle 380ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}

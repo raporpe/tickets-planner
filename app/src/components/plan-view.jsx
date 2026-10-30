@@ -93,7 +93,7 @@ function Count({ items }) {
  * One card on the plan. Memoized with primitive/stable props so starting a drag or crossing into another
  * section only re-renders the section frames, not every card.
  */
-const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons, onUpdate, onStart, register, hidden, free, x, y, w, z, animate }) {
+const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons, onUpdate, onStart, register, hidden, settle, free, x, y, w, z, animate }) {
   const ref = useCallback((el) => register(item.id, el), [register, item.id]);
   return (
     <div
@@ -102,9 +102,12 @@ const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons
       className={cn(free ? 'absolute' : 'select-none', 'touch-none', free && animate && 'transition-[left,top] duration-200 ease-out', hidden && 'opacity-0')}
       style={free ? { left: x, top: y, width: w, zIndex: z } : undefined}
     >
-      <HierarchyHover item={item}>
-        <WorkItemCard item={item} data={data} features={features} pending={pending} reasons={reasons} onUpdate={onUpdate} grabbable />
-      </HierarchyHover>
+      {/* Re-keyed on every drop so the settle animation replays even when the same card lands twice. */}
+      <div key={settle} className={cn(settle > 0 && 'animate-card-settle motion-reduce:animate-none')}>
+        <HierarchyHover item={item}>
+          <WorkItemCard item={item} data={data} features={features} pending={pending} reasons={reasons} onUpdate={onUpdate} grabbable />
+        </HierarchyHover>
+      </div>
     </div>
   );
 });
@@ -191,7 +194,7 @@ function BoardNote({ id, note, left, top, editing, onEdit, onChange, onRemove, t
   );
 }
 
-const ghostTransform = (x, y) => `translate3d(${x}px, ${y}px, 0) rotate(-1.5deg) scale(1.03)`;
+const ghostTransform = (x, y) => `translate3d(${x}px, ${y}px, 0)`;
 
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
   const { layout, place, clearColumn } = useBoardLayout();
@@ -206,6 +209,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const resizer = useRef(null);
   const computed = useRef(null);
   const lastDrop = useRef(null);
+  const drops = useRef(0);
   const ghost = useRef(null);
 
   const { columns, byCol } = useMemo(() => {
@@ -290,7 +294,6 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
       });
       const topZ = Math.max(0, ...Object.values(layout).map((v) => v.z ?? 0));
       entries[d.id] = { col: col.key, x: frac(px), y: py, z: topZ + 1 };
-      lastDrop.current = d.id;
       place(entries);
     }
     if (item.iterationPath !== col.path) onUpdate(item, { iterationPath: col.path });
@@ -333,6 +336,8 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
       window.removeEventListener('pointercancel', up);
       document.body.style.cursor = '';
       if (!started) return;
+      lastDrop.current = d.id;
+      drops.current += 1;
       // The pointer-up ends in a click on the card (or its ADO link); swallow it so a move doesn't open anything.
       const swallow = (c) => {
         c.stopPropagation();
@@ -366,7 +371,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const zoneClass = (col) => ({ blocked: 'opacity-50', over: 'border-primary bg-primary/10' })[zoneState(col)];
 
   const cardProps = (item) => ({ item, data, features, pending: pendingIds.has(item.id), reasons: reasonsById.get(item.id), onUpdate });
-  const listCard = (item) => <PlanCard key={item.id} {...cardProps(item)} onStart={onStart} register={register} hidden={drag?.id === item.id} />;
+  const listCard = (item) => <PlanCard key={item.id} {...cardProps(item)} onStart={onStart} register={register} hidden={drag?.id === item.id} settle={lastDrop.current === item.id ? drops.current : 0} />;
 
   const nextList = next ? byCol.get(next.key) : [];
   const placed = useMemo(() => next && layoutBoard(nextList, next.key, boardWidth, heights, layout), [nextList, next?.key, boardWidth, heights, layout]);
@@ -461,6 +466,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                       onStart={onStart}
                       register={register}
                       hidden={drag?.id === item.id}
+                      settle={lastDrop.current === item.id ? drops.current : 0}
                       free
                       x={p.x}
                       y={p.y}
@@ -544,12 +550,11 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
           <div
             ref={ghost}
             className="pointer-events-none fixed top-0 left-0 z-50 will-change-transform"
-            style={{ width: drag.w, transform: ghostTransform(drag.x - drag.dx, drag.y - drag.dy), transformOrigin: `${drag.dx}px ${drag.dy}px` }}
+            style={{ width: drag.w, transform: ghostTransform(drag.x - drag.dx, drag.y - drag.dy) }}
           >
-            <WorkItemCard
-              {...cardProps(dragged)}
-              className="cursor-grabbing shadow-[0_18px_40px_-12px_oklch(0.35_0.04_60/0.35),0_4px_10px_-4px_oklch(0.35_0.04_60/0.2)] dark:shadow-[0_18px_40px_-10px_oklch(0_0_0/0.7)]"
-            />
+            <div className="animate-card-pickup motion-reduce:animate-none" style={{ transformOrigin: `${drag.dx}px ${drag.dy}px` }}>
+              <WorkItemCard {...cardProps(dragged)} className="cursor-grabbing" />
+            </div>
           </div>,
           document.body,
         )}
