@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Check, ChevronsUpDown, ExternalLink, TriangleAlert } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -7,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { canBeInSprint, columnRank, isDone, stateTone, typeShort, typeStyle } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
+import { useShortcutOpen } from '@/lib/shortcuts';
 
 export function StatePill({ state, className }) {
   return (
@@ -17,9 +17,12 @@ export function StatePill({ state, className }) {
 }
 
 export function StateSelect({ item, states, onChange, disabled }) {
+  const { ref, ...openProps } = useShortcutOpen('state', item.id);
   return (
-    <Select value={item.state} onValueChange={(state) => state !== item.state && onChange({ state })} disabled={disabled}>
+    <Select {...openProps} value={item.state} onValueChange={(state) => state !== item.state && onChange({ state })} disabled={disabled}>
       <SelectTrigger
+        ref={ref}
+        title="Change state (S)"
         size="sm"
         aria-label={`State of ${item.id}`}
         className="h-6! gap-1 border-0 bg-transparent p-0 pr-1 shadow-none hover:bg-accent focus-visible:ring-2 [&>svg]:size-3"
@@ -41,9 +44,10 @@ export function StateSelect({ item, states, onChange, disabled }) {
 
 export function SprintSelect({ item, data, onChange, disabled, className }) {
   const known = item.iterationPath === data.backlogPath || data.sprints.some((s) => s.path === item.iterationPath);
+  const { ref, ...openProps } = useShortcutOpen('sprint', item.id);
   return (
-    <Select value={item.iterationPath} onValueChange={(p) => p !== item.iterationPath && onChange({ iterationPath: p })} disabled={disabled}>
-      <SelectTrigger size="sm" aria-label={`Sprint of ${item.id}`} className={cn('h-7! max-w-48 text-xs', className)}>
+    <Select {...openProps} value={item.iterationPath} onValueChange={(p) => p !== item.iterationPath && onChange({ iterationPath: p })} disabled={disabled}>
+      <SelectTrigger ref={ref} title="Change sprint (Shift C)" size="sm" aria-label={`Sprint of ${item.id}`} className={cn('h-7! max-w-48 text-xs', className)}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent position="popper">
@@ -70,7 +74,7 @@ export function SprintSelect({ item, data, onChange, disabled, className }) {
 }
 
 export function FeaturePicker({ item, features, onPick, disabled, compact, label, className }) {
-  const [open, setOpen] = useState(false);
+  const { open, onOpenChange: setOpen, ref } = useShortcutOpen('feature', item.id);
   const current = features.find((f) => f.id === item.featureId);
   const board = features
     .filter((f) => f.onBoard && !isDone(f))
@@ -81,6 +85,8 @@ export function FeaturePicker({ item, features, onPick, disabled, compact, label
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         <button
+          ref={ref}
+          title="Change Feature (F)"
           type="button"
           aria-label={`Parent feature of ${item.id}`}
           className={cn(

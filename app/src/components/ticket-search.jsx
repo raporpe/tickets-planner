@@ -3,7 +3,9 @@ import { ExternalLink, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { StatePill, TypeLabel } from '@/components/work-item';
+import { Keys } from '@/components/shortcuts-help';
 import { useDetail } from '@/lib/detail';
+import { isMac, MOD, NAV_ACTIONS, TICKET_ACTIONS } from '@/lib/shortcuts';
 
 const LIMIT = 40;
 
@@ -34,23 +36,27 @@ function search(all, q) {
   return { id, hits };
 }
 
-/** Ctrl/Cmd+K: find a ticket by title, id or ADO link and open its detail panel. */
-export function TicketSearch({ data }) {
+/** Ctrl/Cmd+K: find a ticket by title, id or ADO link, or run an action on the current ticket. */
+export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts }) {
   const { openItem } = useDetail();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [target, setTarget] = useState(null);
   const q = useDeferredValue(query.trim());
 
   useEffect(() => {
     const onKey = (e) => {
       if (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey) && !e.altKey) {
         e.preventDefault();
-        setOpen((o) => !o);
+        setOpen((o) => {
+          if (!o) setTarget(getTarget?.() || null);
+          return !o;
+        });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [getTarget]);
 
   useEffect(() => {
     if (!open) setQuery('');
@@ -68,19 +74,52 @@ export function TicketSearch({ data }) {
     setOpen(false);
     openItem(ticketId);
   };
+  // Run after the dialog has closed so pickers can take focus.
+  const later = (fn) => {
+    setOpen(false);
+    setTimeout(fn, 80);
+  };
+
+  const words = id ? null : q.toLowerCase().split(/\s+/).filter(Boolean);
+  const match = (label) => words && words.every((w) => label.toLowerCase().includes(w));
+  const targetItem = target && all.find((t) => t.id === target.id);
+  const actions = target ? TICKET_ACTIONS.filter((a) => match(a.label)) : [];
+  const navs = words ? NAV_ACTIONS.filter((a) => match(a.label)) : [];
+  const showHelp = words && match('Keyboard shortcuts help');
 
   return (
     <>
-    <Button size="sm" variant="outline" className="text-muted-foreground" onClick={() => setOpen(true)} aria-label="Find a ticket (Ctrl+K)">
+    <Button
+      size="sm"
+      variant="outline"
+      className="text-muted-foreground"
+      onClick={() => {
+        setTarget(null);
+        setOpen(true);
+      }}
+      aria-label={`Find a ticket or run an action (${MOD}+K)`}
+    >
       <Search />
       Find ticket
-      <kbd className="ml-1 rounded border bg-muted px-1 font-sans text-[10px] font-medium">{/Mac|iPhone/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
+      <kbd className="ml-1 rounded border bg-muted px-1 font-sans text-[10px] font-medium">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
     </Button>
-    <CommandDialog open={open} onOpenChange={setOpen} title="Find a ticket" description="Search by title, id or Azure DevOps link" className="sm:max-w-2xl">
+    <CommandDialog open={open} onOpenChange={setOpen} title="Find a ticket" description="Search by title, id or Azure DevOps link, or run an action" className="sm:max-w-2xl">
       <Command shouldFilter={false}>
-        <CommandInput value={query} onValueChange={setQuery} placeholder="Search by title, id or paste an Azure DevOps link…" />
+        <CommandInput value={query} onValueChange={setQuery} placeholder={target ? `Search tickets, or an action for #${target.id}…` : 'Search by title, id or paste an Azure DevOps link…'} />
         <CommandList className="max-h-[min(28rem,60vh)]">
-          <CommandEmpty>No ticket matches “{q}”.</CommandEmpty>
+          <CommandEmpty>No ticket or action matches “{q}”.</CommandEmpty>
+          {actions.length > 0 && (
+            <CommandGroup heading={`Actions on #${target.id}${targetItem ? ` · ${targetItem.title}` : ''}`} className="[&_[cmdk-group-heading]]:truncate">
+              {actions.map((a) => (
+                <CommandItem key={a.id} value={`action-${a.id}`} onSelect={() => later(() => onAction(a.id, target))}>
+                  {a.label}
+                  <span data-slot="command-shortcut" className="ml-auto">
+                    <Keys keys={a.keys} />
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
           {unknownId && (
             <CommandGroup heading="Azure DevOps">
               <CommandItem value={`open-${id}`} onSelect={() => pick(id)}>
@@ -107,6 +146,28 @@ export function TicketSearch({ data }) {
                   <StatePill state={t.state} className="shrink-0" />
                 </CommandItem>
               ))}
+            </CommandGroup>
+          )}
+          {navs.length > 0 && (
+            <CommandGroup heading="Navigate">
+              {navs.map((a) => (
+                <CommandItem key={a.id} value={`nav-${a.id}`} onSelect={() => later(() => onNavigate(a.id))}>
+                  {a.label}
+                  <span data-slot="command-shortcut" className="ml-auto">
+                    <Keys keys={a.keys} sequence />
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {showHelp && (
+            <CommandGroup heading="Help">
+              <CommandItem value="help-shortcuts" onSelect={() => later(onShowShortcuts)}>
+                Keyboard shortcuts
+                <span data-slot="command-shortcut" className="ml-auto">
+                  <Keys keys={['?']} />
+                </span>
+              </CommandItem>
             </CommandGroup>
           )}
         </CommandList>

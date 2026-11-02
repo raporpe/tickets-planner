@@ -19,6 +19,8 @@ import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
 import { attentionReasons, canBeInSprint, featuresInSprint, matchesFilters, needsAction } from '@/lib/planning';
 import { copyItem } from '@/lib/copy-item';
+import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@/lib/shortcuts';
+import { ShortcutsHelp } from '@/components/shortcuts-help';
 import { setTheme, useTheme } from '@/lib/theme';
 
 function ThemeToggle() {
@@ -163,27 +165,83 @@ export default function App() {
     [reasonsById, data],
   );
 
-  // Press C while hovering a card or row to copy "#id Title [State]" with the id linked to ADO.
+  // Linear-style shortcuts: act on the open ticket, else on the hovered card or row.
   const dataRef = useRef(data);
   dataRef.current = data;
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key.toLowerCase() !== 'c' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-      if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
-      const hovered = [...document.querySelectorAll(':hover')].pop()?.closest('[data-item-id]');
-      const id = Number(hovered?.dataset.itemId);
-      const d = dataRef.current;
-      const item = id && (d?.items.find((i) => i.id === id) || d?.features.find((f) => f.id === id));
-      if (!item) return;
-      e.preventDefault();
-      copyItem(item).then(
+  const detailRef = useRef(detailId);
+  detailRef.current = detailId;
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const helpRef = useRef(false);
+  helpRef.current = shortcutsOpen;
+
+  const getTarget = useCallback(() => {
+    if (detailRef.current) return { id: detailRef.current, scope: document.querySelector('[data-slot="sheet-content"]') };
+    const el = [...document.querySelectorAll(':hover')].pop()?.closest('[data-item-id]');
+    const id = Number(el?.dataset.itemId);
+    return id ? { id, scope: el } : null;
+  }, []);
+
+  const doAction = useCallback((action, target) => {
+    if (!target) return toast.message('Hover a ticket or open one first');
+    const { id, scope } = target;
+    const d = dataRef.current;
+    if (action === 'copy' || action === 'open-ado') {
+      const item = d?.items.find((i) => i.id === id) || d?.features.find((f) => f.id === id);
+      if (action === 'open-ado') return window.open(item?.url || `https://msasg.visualstudio.com/SAN%20SA/_workitems/edit/${id}`, '_blank', 'noreferrer');
+      if (!item) return toast.message(`#${id} isn't loaded in the planner`);
+      return copyItem(item).then(
         () => toast.success(`Copied #${item.id}`),
         () => toast.error('Could not copy to the clipboard'),
       );
+    }
+    if (scope?.isConnected && runAction(action, id, scope)) return;
+    if (detailRef.current === id) {
+      const a = TICKET_ACTIONS.find((x) => x.id === action);
+      return toast.message(`${a?.label || 'That action'} isn't available for #${id}`);
+    }
+    queueAction(action, id);
+    setDetailId(id);
+  }, []);
+
+  const goTo = useCallback((nav) => {
+    setDetailId(null);
+    setTab(nav);
+  }, []);
+
+  useEffect(() => {
+    let gAt = 0;
+    const keys = { s: 'state', f: 'feature', p: 'link-pr', m: 'comment', e: 'edit', o: 'open-ado', c: 'copy' };
+    const onKey = (e) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || isTyping(e) || overlayOpen() || helpRef.current) return;
+      const k = e.key.toLowerCase();
+      if (e.key === '?') {
+        e.preventDefault();
+        return setShortcutsOpen(true);
+      }
+      if (gAt && Date.now() - gAt < 1200 && !e.shiftKey) {
+        gAt = 0;
+        const nav = { s: 'plan', f: 'features', a: 'attention' }[k];
+        if (nav) {
+          e.preventDefault();
+          goTo(nav);
+        }
+        return;
+      }
+      gAt = 0;
+      if (k === 'g' && !e.shiftKey) {
+        if (!detailRef.current) gAt = Date.now();
+        return;
+      }
+      const action = e.shiftKey ? (k === 'c' ? 'sprint' : null) : keys[k];
+      if (!action) return;
+      const target = getTarget();
+      if (!target) return;
+      e.preventDefault();
+      doAction(action, target);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [getTarget, doAction, goTo]);
 
   const onUpdate = useCallback(
     async (item, patch) => {
@@ -286,7 +344,7 @@ export default function App() {
             <span className="hidden text-xs text-muted-foreground md:inline">
               {auth.user} · {auth.method === 'device-code' ? 'device code' : 'Azure CLI'}
             </span>
-            {data && <TicketSearch data={data} />}
+            {data && <TicketSearch data={data} getTarget={getTarget} onAction={doAction} onNavigate={goTo} onShowShortcuts={() => setShortcutsOpen(true)} />}
             <Button size="sm" variant="outline" onClick={load} disabled={loading} aria-label="Refresh from Azure DevOps">
               <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh
@@ -354,6 +412,7 @@ export default function App() {
           onClose={() => setDetailId(null)}
         />
       )}
+      <ShortcutsHelp open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <Toaster position="bottom-right" />
     </TooltipProvider>
     </DetailContext.Provider>

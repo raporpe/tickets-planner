@@ -34,7 +34,26 @@ Hover a card or row while holding **Shift** to preview its parents, or **Ctrl** 
 
 Hover a card or row and press **C** to copy it as `#id Title [State]`, with the id linked to Azure DevOps (a real link when pasted into Teams or Outlook, a Markdown link in plain-text places such as AI chats). Long titles are shortened to about 80 characters.
 
-Press **Ctrl+K** (**⌘K** on Mac), or click "Find ticket", to search your tickets and Features by title words, by id, or by pasting an Azure DevOps link; Enter opens the detail panel. An id or link for a ticket that isn't in the planner can still be opened straight from ADO.
+Press **Ctrl+K** (**⌘K** on Mac), or click "Find ticket", to search your tickets and Features by title words, by id, or by pasting an Azure DevOps link; Enter opens the detail panel. An id or link for a ticket that isn't in the planner can still be opened straight from ADO. Opened while a ticket is open or hovered, the palette also lists every action for that ticket, plus navigation and the shortcut list.
+
+## Keyboard shortcuts
+
+Linear-style: single keys act on the open ticket, or on the card or row under the mouse. Keys that need the detail panel (P, M, E, or Shift+C on a card) open the ticket first and then run. Press **?** for the full list.
+
+| Key | Action |
+| --- | --- |
+| S | Change state |
+| Shift+C | Change sprint |
+| F | Change Feature |
+| P | Link a pull request (focuses the paste field) |
+| M | Add a comment |
+| E | Edit the description |
+| O | Open in Azure DevOps |
+| C | Copy link, title and state |
+| J / K | Next / previous ticket (detail panel open) |
+| G then S / F / A | Go to Sprint planning / By Feature / Needs attention |
+| Ctrl+K | Find a ticket or run an action |
+| ? | Keyboard shortcuts |
 
 The sun/moon button in the header switches between light and dark themes. The choice is remembered in the browser; until you pick one, the app follows the OS setting.
 

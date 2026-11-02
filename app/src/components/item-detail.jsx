@@ -10,6 +10,7 @@ import { RichEditor, RichView } from '@/components/rich-text';
 import { HierarchyTree, MissingParent } from '@/components/hierarchy';
 import { api } from '@/api';
 import { useDetail } from '@/lib/detail';
+import { isTyping, overlayOpen, runAction, takeQueued, TICKET_ACTIONS, useAction } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 const FIELD_LABELS = {
@@ -136,11 +137,15 @@ function UnlinkButton({ onClick }) {
   );
 }
 
-function PullRequests({ prs, who, onLink, onUnlink, onEditingChange }) {
+function PullRequests({ id, prs, who, onLink, onUnlink, onEditingChange }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const input = useRef(null);
+  const scope = useAction('link-pr', id, () => {
+    input.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    input.current?.focus({ preventScroll: true });
+  });
   const ready = !!value.trim();
   useEffect(() => onEditingChange(ready), [ready, onEditingChange]);
 
@@ -165,15 +170,16 @@ function PullRequests({ prs, who, onLink, onUnlink, onEditingChange }) {
           {prs.length > 0 && <span className="tabular-nums">{prs.length}</span>}
         </span>
       </SectionHeader>
-      <form onSubmit={submit} className="relative">
+      <form ref={scope} onSubmit={submit} className="group/pr relative">
         <Link2 className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <input
           ref={input}
           value={value}
           onChange={(e) => (setValue(e.target.value), setError(null))}
           onKeyDown={(e) => {
-            if (e.key === 'Escape' && value) {
+            if (e.key === 'Escape') {
               e.stopPropagation();
+              if (!value) return e.currentTarget.blur();
               setValue('');
               setError(null);
             }
@@ -193,8 +199,12 @@ function PullRequests({ prs, who, onLink, onUnlink, onEditingChange }) {
             <span className="inline-flex items-center gap-1">
               <Loader2 className="size-3.5 animate-spin" /> Linking
             </span>
+          ) : ready ? (
+            <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px]">Enter ↵</kbd>
           ) : (
-            ready && <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px]">Enter ↵</kbd>
+            <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px] group-focus-within/pr:hidden" title="Press P to jump here">
+              P
+            </kbd>
           )}
         </span>
       </form>
@@ -387,23 +397,16 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
   );
 }
 
-function NewComment({ onAdd, onEditingChange }) {
+function NewComment({ id, onAdd, onEditingChange }) {
   const [active, setActive] = useState(false);
   const [saving, setSaving] = useState(false);
+  const scope = useAction('comment', id, () => {
+    setActive(true);
+    requestAnimationFrame(() => scope.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  });
   useEffect(() => onEditingChange(active), [active, onEditingChange]);
 
-  if (!active) {
-    return (
-      <button
-        type="button"
-        onClick={() => setActive(true)}
-        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-left text-[13px] text-muted-foreground hover:border-foreground/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      >
-        Add a comment…
-      </button>
-    );
-  }
-  return (
+  return <div ref={scope}>{active ? (
     <RichEditor
       placeholder="Add a comment…"
       saveLabel="Comment"
@@ -418,7 +421,16 @@ function NewComment({ onAdd, onEditingChange }) {
       }}
       minHeight="min-h-20"
     />
-  );
+  ) : (
+      <button
+        type="button"
+        onClick={() => setActive(true)}
+        className="flex w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-left text-[13px] text-muted-foreground hover:border-foreground/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        Add a comment…
+        <kbd className="ml-auto rounded border bg-muted px-1.5 font-sans text-[11px]">M</kbd>
+      </button>
+  )}</div>;
 }
 
 function DetailSkeleton() {
@@ -499,26 +511,36 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     return trackers.current.get(key);
   };
 
+  const body = useAction('edit', id, () => body.current?.querySelector('[data-detail-edit]')?.click());
+
+  // A shortcut pressed on a card that needs this panel (e.g. P on a hovered card) runs once the ticket loads.
+  const loadedId = detail?.id;
+  useEffect(() => {
+    if (!loadedId || loadedId !== id) return;
+    const action = takeQueued(id);
+    if (!action) return;
+    const t = setTimeout(() => {
+      const sheet = document.querySelector('[data-slot="sheet-content"]');
+      if (!runAction(action, id, sheet)) {
+        const a = TICKET_ACTIONS.find((x) => x.id === action);
+        toast.message(`${a?.label || 'That action'} isn't available for #${id}`);
+      }
+    }, 60);
+    return () => clearTimeout(t);
+  }, [loadedId, id]);
+
   function requestClose() {
     if (editors.current.size) return setConfirming(true);
     onClose();
   }
 
-  // E edits the first text field; J / K step to the next / previous card on the page.
+  // J / K step to the next / previous card on the page; other keys go through the shared shortcuts in App.
   useEffect(() => {
     if (!id) return;
     const onKey = (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-      const t = e.target;
-      if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat || isTyping(e) || overlayOpen()) return;
       const k = e.key.toLowerCase();
-      if (k === 'e') {
-        const edit = document.querySelector('[data-detail-edit]');
-        if (edit) {
-          e.preventDefault();
-          edit.click();
-        }
-      } else if (k === 'j' || k === 'k') {
+      if (k === 'j' || k === 'k') {
         e.preventDefault();
         if (editors.current.size) return setConfirming(true);
         const known = new Set(data?.items.map((i) => i.id));
@@ -631,6 +653,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   return (
     <Sheet open={!!id} onOpenChange={(o) => !o && requestClose()}>
       <SheetContent
+        ref={body}
         className="gap-0 sm:max-w-2xl"
         onEscapeKeyDown={(e) => {
           if (!editors.current.size) return;
@@ -666,6 +689,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                   href={detail.url}
                   target="_blank"
                   rel="noreferrer"
+                  title="Open in Azure DevOps (O)"
                   className="inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums hover:text-primary hover:underline"
                 >
                   {detail.id} <ExternalLink className="size-3" />
@@ -763,6 +787,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
 
                 <PullRequests
                   key={`prs-${detail.id}`}
+                  id={detail.id}
                   prs={detail.pullRequests || []}
                   who={who}
                   onLink={linkPullRequest}
@@ -788,7 +813,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                       <span className="tabular-nums">{detail.commentCount}</span>
                     </span>
                   </SectionHeader>
-                  <NewComment key={`new-${detail.id}`} onAdd={addComment} onEditingChange={tracker('new-comment')} />
+                  <NewComment key={`new-${detail.id}`} id={detail.id} onAdd={addComment} onEditingChange={tracker('new-comment')} />
                   {detail.comments.length > 0 && (
                     <ul className="mt-4 flex flex-col gap-4">
                       {detail.comments.map((c) => (
