@@ -207,6 +207,9 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const [drag, setDrag] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
+  const [backlogOpen, setBacklogOpen] = useState(false);
+  const backlogEl = useRef(null);
+  const peekTimer = useRef(0);
   const [heights, setHeights] = useState({});
   const [boardWidth, setBoardWidth] = useState(CARD_W + PAD * 2);
   const board = useRef(null);
@@ -258,15 +261,33 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   }, [next?.key]);
 
   useEffect(() => {
-    if (!drawerOpen && !sideOpen) return undefined;
+    if (!drawerOpen && !sideOpen && !backlogOpen) return undefined;
     const onKey = (e) => {
       if (e.key !== 'Escape' || drag) return;
       setDrawerOpen(false);
       setSideOpen(false);
+      setBacklogOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [drawerOpen, sideOpen, drag]);
+  }, [drawerOpen, sideOpen, backlogOpen, drag]);
+
+  // The backlog peeks out on hover. A short delay on the way in ignores the pointer just passing by;
+  // a slightly longer one on the way out forgives overshooting the edge.
+  const peekBacklog = (open, delay) => {
+    clearTimeout(peekTimer.current);
+    const settle = () => {
+      const el = backlogEl.current;
+      // Keep it open while a menu from one of its cards is showing, or the keyboard is working inside it.
+      if (!open && el && (el.matches(':hover') || el.querySelector(':focus-visible') || document.querySelector('[data-radix-popper-content-wrapper]'))) {
+        peekTimer.current = setTimeout(settle, 250);
+        return;
+      }
+      setBacklogOpen(open);
+    };
+    peekTimer.current = setTimeout(settle, delay);
+  };
+  useEffect(() => () => clearTimeout(peekTimer.current), []);
 
   // Card heights feed the whiteboard layout. A ResizeObserver reports them without forcing a layout on every render.
   useEffect(() => {
@@ -443,25 +464,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   return (
     // While dragging, cards ignore the pointer so hovering them costs nothing (and drop targets resolve straight to the column).
     <div className={cn('relative h-full overflow-hidden', drag && '[&_article]:pointer-events-none')}>
-      <div className={cn('flex h-full gap-3 px-4 pb-14', later && 'pr-14')}>
-        {/* Backlog: a plain vertical stack, exactly one card wide. */}
-        <section
-          aria-label={backlog.title}
-          data-drop={backlog.key}
-          className={cn('flex h-full w-[20rem] shrink-0 flex-col rounded-lg border bg-muted/40 transition-[opacity,border-color,background-color]', zoneClass(backlog))}
-        >
-          <header className="flex items-start gap-2 border-b px-3 py-2.5">
-            <ColumnTitle col={backlog} />
-            <span className="ml-auto">
-              <Count items={byCol.get(backlog.key)} />
-            </span>
-          </header>
-          <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2">
-            {byCol.get(backlog.key).length === 0 && <p className="px-2 py-6 text-center text-xs text-muted-foreground">Empty.</p>}
-            {byCol.get(backlog.key).map(listCard)}
-          </div>
-        </section>
-
+      <div className={cn('flex h-full gap-3 pr-4 pb-14 pl-[3.75rem]', later && 'pr-14')}>
         {/* Next sprint: the whiteboard, where cards sit wherever you leave them. */}
         {next ? (
           <section
@@ -553,6 +556,64 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
             No upcoming sprint under {data.backlogPath}.
           </section>
         )}
+      </div>
+
+      {/* Backlog: a rail on the left that slides out over the whiteboard while you hover it. */}
+      <div
+        ref={backlogEl}
+        onPointerEnter={() => peekBacklog(true, 70)}
+        onPointerLeave={() => peekBacklog(false, 220)}
+        className={cn(
+          'absolute top-0 bottom-14 left-0 z-20 flex w-[min(22rem,85vw)] rounded-r-xl border border-l-0 bg-card/95 backdrop-blur-sm will-change-transform',
+          'transition-[translate,box-shadow] motion-reduce:transition-none',
+          backlogOpen
+            ? 'shadow-[10px_0_30px_-12px_oklch(0.35_0.04_60/0.3)] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] dark:shadow-[12px_0_30px_-10px_oklch(0_0_0/0.6)]'
+            : '-translate-x-[calc(100%-2.75rem)] shadow-none duration-[170ms] ease-[cubic-bezier(0.4,0,0.2,1)]',
+        )}
+      >
+        <section
+          id="backlog-panel"
+          inert={!backlogOpen}
+          aria-label={backlog.title}
+          data-drop={backlog.key}
+          className={cn(
+            'my-3 ml-3 flex min-w-0 flex-1 flex-col rounded-lg border bg-muted/40 transition-[opacity,translate,border-color,background-color] motion-reduce:transition-none',
+            backlogOpen ? 'delay-[40ms] duration-200 ease-out' : 'translate-x-[-0.75rem] opacity-0 duration-100',
+            zoneClass(backlog),
+          )}
+        >
+          <header className="flex items-start gap-2 border-b px-3 py-2.5">
+            <ColumnTitle col={backlog} />
+            <span className="ml-auto">
+              <Count items={byCol.get(backlog.key)} />
+            </span>
+          </header>
+          <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-2">
+            {byCol.get(backlog.key).length === 0 && <p className="px-2 py-6 text-center text-xs text-muted-foreground">Empty.</p>}
+            {byCol.get(backlog.key).map(listCard)}
+          </div>
+        </section>
+        <button
+          type="button"
+          aria-expanded={backlogOpen}
+          aria-controls="backlog-panel"
+          aria-label={`${backlogOpen ? 'Hide' : 'Show'} ${backlog.title}`}
+          onClick={() => {
+            clearTimeout(peekTimer.current);
+            setBacklogOpen((o) => !o);
+          }}
+          data-drop={backlog.key}
+          className={cn(
+            'group relative flex w-11 shrink-0 flex-col items-center gap-2 rounded-r-xl py-3 transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            zoneState(backlog) === 'over' && 'bg-primary/10',
+          )}
+        >
+          <span aria-hidden className="absolute top-1/2 right-1.5 h-9 w-1 -translate-y-1/2 rounded-full bg-foreground/15 transition-[height,background-color] duration-150 group-hover:h-12 group-hover:bg-foreground/25" />
+          <ChevronRight className={cn('size-4 text-muted-foreground transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]', backlogOpen && 'rotate-180')} />
+          <Inbox className="size-4 text-muted-foreground" />
+          <span className="text-sm font-semibold [writing-mode:vertical-rl]">{backlog.title}</span>
+          <span className="text-xs text-muted-foreground tabular-nums [writing-mode:vertical-rl]">{byCol.get(backlog.key).filter((i) => !isDone(i)).length} open</span>
+        </button>
       </div>
 
       {/* The sprint after next: a drawer on the right that slides in to take tickets you push one sprint further. */}
