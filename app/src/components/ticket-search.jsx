@@ -4,7 +4,7 @@ import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, Comma
 import { StatePill, TypeLabel } from '@/components/work-item';
 import { Keys } from '@/components/shortcuts-help';
 import { useDetail } from '@/lib/detail';
-import { NAV_ACTIONS, TICKET_ACTIONS } from '@/lib/shortcuts';
+import { NAV_ACTIONS, TICKET_ACTIONS, VIEW_ACTIONS } from '@/lib/shortcuts';
 
 const LIMIT = 40;
 
@@ -36,7 +36,7 @@ function search(all, q) {
 }
 
 /** Ctrl/Cmd+K: find a ticket by title, id or ADO link, or run an action on the current ticket. */
-export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts }) {
+export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts, onView, showClosed }) {
   const { openItem } = useDetail();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -84,6 +84,9 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
   const targetItem = target && all.find((t) => t.id === target.id);
   const actions = target ? TICKET_ACTIONS.filter((a) => match(a.label)) : [];
   const navs = words ? NAV_ACTIONS.filter((a) => match(a.label)) : [];
+  const viewLabel = (a) => (showClosed && a.onLabel) || a.label;
+  // View toggles are listed even before typing, so "show closed" is one Ctrl+K away.
+  const views = id ? [] : VIEW_ACTIONS.filter((a) => !words.length || match(viewLabel(a)));
   const showHelp = words && match('Keyboard shortcuts help');
 
   return (
@@ -140,6 +143,18 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
                   {a.label}
                   <span data-slot="command-shortcut" className="ml-auto">
                     <Keys keys={a.keys} sequence />
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+          {views.length > 0 && (
+            <CommandGroup heading="View">
+              {views.map((a) => (
+                <CommandItem key={a.id} value={`view-${a.id}`} onSelect={() => later(() => onView(a.id))}>
+                  {viewLabel(a)}
+                  <span data-slot="command-shortcut" className="ml-auto">
+                    <Keys keys={a.keys} />
                   </span>
                 </CommandItem>
               ))}

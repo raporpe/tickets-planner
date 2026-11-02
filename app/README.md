@@ -34,7 +34,9 @@ Hover a card or row while holding **Shift** to preview its parents, or **Ctrl** 
 
 Hover a card or row and press **C** to copy it as `#id Title [State]`, with the id linked to Azure DevOps (a real link when pasted into Teams or Outlook, a Markdown link in plain-text places such as AI chats). Long titles are shortened to about 80 characters.
 
-Press **Ctrl+K** (**⌘K** on Mac) to search your tickets and Features by title words, by id, or by pasting an Azure DevOps link; Enter opens the detail panel. An id or link for a ticket that isn't in the planner can still be opened straight from ADO. Opened while a ticket is open or hovered, the palette also lists every action for that ticket, plus navigation and the shortcut list.
+Press **Ctrl+K** (**⌘K** on Mac) to search your tickets and Features by title words, by id, or by pasting an Azure DevOps link; Enter opens the detail panel. An id or link for a ticket that isn't in the planner can still be opened straight from ADO. Opened while a ticket is open or hovered, the palette also lists every action for that ticket, plus navigation, view toggles (filter, show or hide closed tickets) and the shortcut list.
+
+The filter field sits in the header next to the tabs; while a filter or closed tickets are on, it shows how many tickets match. Closed tickets are hidden by default; when shown, an **Incl. closed** chip appears beside the filter (click it to hide them again). The last sync time is on the Refresh button's tooltip.
 
 ## Keyboard shortcuts
 
@@ -52,6 +54,8 @@ Linear-style: single keys act on the open ticket, or on the card or row under th
 | C | Copy link, title and state |
 | J / K | Next / previous ticket (detail panel open) |
 | G then S / F / A | Go to Sprint planning / By Feature / Needs attention |
+| / | Filter tickets (Esc clears, then leaves the field) |
+| Shift+D | Show or hide tickets closed in the last 21 days |
 | Ctrl+K | Find a ticket or run an action |
 | ? | Keyboard shortcuts |
 

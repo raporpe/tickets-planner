@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert } from 'lucide-react';
+import { KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -71,15 +70,7 @@ function ColumnHeaderSkeleton({ wide }) {
 function LoadingPlan() {
   return (
     <div className="relative h-full overflow-hidden" aria-busy="true" aria-label="Loading sprint planning">
-      <div className="flex h-full gap-3 px-4 pr-14 pb-14">
-        <div className="flex h-full w-[20rem] shrink-0 flex-col rounded-lg border bg-muted/40">
-          <ColumnHeaderSkeleton />
-          <div className="flex flex-col gap-1.5 overflow-hidden p-2">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <CardSkeleton key={i} />
-            ))}
-          </div>
-        </div>
+      <div className="flex h-full gap-3 pr-14 pb-14 pl-[3.75rem]">
         <div className="flex h-full min-w-[19rem] flex-1 flex-col rounded-lg border bg-muted/40">
           <ColumnHeaderSkeleton wide />
           <div className="whiteboard-dots grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2.5 overflow-hidden p-3">
@@ -88,6 +79,10 @@ function LoadingPlan() {
             ))}
           </div>
         </div>
+      </div>
+      <div className="absolute top-0 bottom-14 left-0 flex w-11 flex-col items-center gap-2 rounded-r-xl border border-l-0 bg-card py-3">
+        <Skeleton className="size-4" />
+        <Skeleton className="h-24 w-4" />
       </div>
       <div className="absolute top-0 right-0 bottom-14 flex w-11 flex-col items-center gap-2 rounded-l-xl border border-r-0 bg-card py-3">
         <Skeleton className="size-4" />
@@ -208,6 +203,13 @@ export default function App() {
     setTab(nav);
   }, []);
 
+  const filterRef = useRef(null);
+  const onView = useCallback((view) => {
+    if (view === 'filter') return filterRef.current?.focus();
+    toast.message(filters.showClosed ? 'Hiding closed tickets' : 'Showing tickets closed in the last 21 days');
+    setFilters((f) => ({ ...f, showClosed: !f.showClosed }));
+  }, [filters.showClosed]);
+
   useEffect(() => {
     let gAt = 0;
     const keys = { s: 'state', f: 'feature', p: 'link-pr', m: 'comment', e: 'edit', o: 'open-ado', c: 'copy' };
@@ -217,6 +219,10 @@ export default function App() {
       if (e.key === '?') {
         e.preventDefault();
         return setShortcutsOpen(true);
+      }
+      if (e.key === '/' || (e.shiftKey && k === 'd')) {
+        e.preventDefault();
+        return onView(e.key === '/' ? 'filter' : 'toggle-closed');
       }
       if (gAt && Date.now() - gAt < 1200 && !e.shiftKey) {
         gAt = 0;
@@ -241,7 +247,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [getTarget, doAction, goTo]);
+  }, [getTarget, doAction, goTo, onView]);
 
   const onUpdate = useCallback(
     async (item, patch) => {
@@ -336,12 +342,55 @@ export default function App() {
               )}
             </TabsTrigger>
           </TabsList>
+          <div className="group/filter relative w-56 transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-within:w-80 motion-reduce:transition-none">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={filterRef}
+              value={filters.search}
+              onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return;
+                e.stopPropagation();
+                if (filters.search) setFilters((f) => ({ ...f, search: '' }));
+                else e.currentTarget.blur();
+              }}
+              placeholder="Filter tickets"
+              title="Filter by id, title, tag or Feature (/)"
+              aria-label="Filter by id, title, tag or Feature"
+              className="h-8 pr-14 pl-8 text-xs"
+            />
+            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums">
+              {filters.search || filters.showClosed ? (
+                data && `${shownCount}/${totalCount}`
+              ) : (
+                <kbd className="rounded border bg-muted px-1 font-sans text-[10px] font-medium group-focus-within/filter:hidden">/</kbd>
+              )}
+            </span>
+          </div>
+          {filters.showClosed && (
+            <button
+              type="button"
+              onClick={() => onView('toggle-closed')}
+              title="Hide closed tickets (Shift D)"
+              className="group/chip flex h-7 items-center gap-1 rounded-full border bg-muted/60 pr-1.5 pl-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Incl. closed · 21 days
+              <X className="size-3.5 opacity-60 group-hover/chip:opacity-100" />
+            </button>
+          )}
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden text-xs text-muted-foreground md:inline">
               {auth.user} · {auth.method === 'device-code' ? 'device code' : 'Azure CLI'}
             </span>
-            {data && <TicketSearch data={data} getTarget={getTarget} onAction={doAction} onNavigate={goTo} onShowShortcuts={() => setShortcutsOpen(true)} />}
-            <Button size="sm" variant="outline" onClick={load} disabled={loading} aria-label="Refresh from Azure DevOps">
+            {data && <TicketSearch data={data} getTarget={getTarget} onAction={doAction} onNavigate={goTo} onView={onView} showClosed={filters.showClosed} onShowShortcuts={() => setShortcutsOpen(true)} />}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={load}
+              disabled={loading}
+              aria-label="Refresh from Azure DevOps"
+              title={data ? `Synced ${new Date(data.generatedAt).toLocaleTimeString()}` : undefined}
+            >
               <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh
             </Button>
@@ -349,29 +398,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex flex-wrap items-center gap-3 px-4 py-2.5">
-          <div className="relative w-72">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={filters.search}
-              onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-              placeholder="Filter by id, title, tag or Feature"
-              aria-label="Filter items"
-              className="h-8 pl-8 text-xs"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Checkbox checked={filters.showClosed} onCheckedChange={(v) => setFilters((f) => ({ ...f, showClosed: !!v }))} />
-            Show closed (last 21 days)
-          </label>
-          {data && (
-            <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-              {shownCount} of {totalCount} items · synced {new Date(data.generatedAt).toLocaleTimeString()}
-            </span>
-          )}
-        </div>
-
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 pt-3">
           {loadError && (
             <div className="mx-4 mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               Could not load from Azure DevOps: {loadError}{' '}

@@ -21,6 +21,11 @@ export const NAV_ACTIONS = [
   { id: 'attention', label: 'Go to Needs attention', keys: ['G', 'A'] },
 ];
 
+export const VIEW_ACTIONS = [
+  { id: 'filter', label: 'Filter tickets', keys: ['/'] },
+  { id: 'toggle-closed', label: 'Show closed tickets (last 21 days)', onLabel: 'Hide closed tickets', keys: ['Shift', 'D'] },
+];
+
 export const SHORTCUT_GROUPS = [
   { title: 'Ticket (hovered card or open ticket)', items: TICKET_ACTIONS },
   {
@@ -31,6 +36,7 @@ export const SHORTCUT_GROUPS = [
     ],
   },
   { title: 'Navigate', items: NAV_ACTIONS },
+  { title: 'View', items: [VIEW_ACTIONS[0], { label: 'Show or hide closed tickets', keys: VIEW_ACTIONS[1].keys }] },
   {
     title: 'General',
     items: [
