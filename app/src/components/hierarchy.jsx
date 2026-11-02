@@ -26,9 +26,14 @@ export function HierarchyTree({ ancestors, self, children = [], onOpen, compact 
   const chain = [...ancestors.map((n, i) => ({ ...n, depth: i })), { ...self, self: true, depth: ancestors.length }];
   const nodes = [...chain, ...children.map((c) => ({ ...c, depth: ancestors.length + 1 }))];
   const step = compact ? 16 : 20;
-  // Elbows start under the parent's dot (centre ≈ 3.5px in) and stop just short of the child's dot,
-  // or at the edge of the highlighted current row, so they never run under a label.
-  const elbow = (n) => ({ left: (n.depth - 1) * step + 3.5, width: step - 3.5 - (n.self ? 6 : 3) });
+  // Elbows start just below the parent's dot (centre ≈ 3.5px in, radius 4px) and stop just short of the child's dot,
+  // or at the edge of the highlighted current row, so they never run under a dot or a label.
+  const elbow = (n) => ({
+    left: (n.depth - 1) * step + 3.5,
+    width: step - 3.5 - (n.self ? 6 : 3),
+    top: 'calc(-50% + 6px)',
+    height: 'calc(100% - 6px)',
+  });
   return (
     <ol className="flex flex-col">
       {nodes.map((n) => {
@@ -44,7 +49,7 @@ export function HierarchyTree({ ancestors, self, children = [], onOpen, compact 
               // From the previous row's dot down and across to this row's dot (rows share one height).
               <span
                 aria-hidden
-                className="absolute -top-1/2 h-full rounded-bl-md border-b border-l border-stone-300 dark:border-stone-600"
+                className="absolute rounded-bl-md border-b border-l border-stone-300 dark:border-stone-600"
                 style={elbow(n)}
               />
             )}
