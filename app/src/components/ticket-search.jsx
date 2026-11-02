@@ -1,11 +1,10 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Search } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ExternalLink } from 'lucide-react';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { StatePill, TypeLabel } from '@/components/work-item';
 import { Keys } from '@/components/shortcuts-help';
 import { useDetail } from '@/lib/detail';
-import { isMac, MOD, NAV_ACTIONS, TICKET_ACTIONS } from '@/lib/shortcuts';
+import { NAV_ACTIONS, TICKET_ACTIONS } from '@/lib/shortcuts';
 
 const LIMIT = 40;
 
@@ -89,20 +88,6 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
 
   return (
     <>
-    <Button
-      size="sm"
-      variant="outline"
-      className="text-muted-foreground"
-      onClick={() => {
-        setTarget(null);
-        setOpen(true);
-      }}
-      aria-label={`Find a ticket or run an action (${MOD}+K)`}
-    >
-      <Search />
-      Find ticket
-      <kbd className="ml-1 rounded border bg-muted px-1 font-sans text-[10px] font-medium">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
-    </Button>
     <CommandDialog open={open} onOpenChange={setOpen} title="Find a ticket" description="Search by title, id or Azure DevOps link, or run an action" className="sm:max-w-2xl">
       <Command shouldFilter={false}>
         <CommandInput value={query} onValueChange={setQuery} placeholder={target ? `Search tickets, or an action for #${target.id}…` : 'Search by title, id or paste an Azure DevOps link…'} />
