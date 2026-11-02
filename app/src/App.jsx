@@ -16,7 +16,7 @@ import { ItemDetail } from '@/components/item-detail';
 import { TicketSearch } from '@/components/ticket-search';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
-import { attentionReasons, canBeInSprint, featuresInSprint, matchesFilters, needsAction } from '@/lib/planning';
+import { attentionReasons, canBeInSprint, featuresInSprint, isDone, matchesFilters, needsAction } from '@/lib/planning';
 import { copyItem } from '@/lib/copy-item';
 import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@/lib/shortcuts';
 import { ShortcutsHelp } from '@/components/shortcuts-help';
@@ -152,7 +152,14 @@ export default function App() {
   );
   const visibleItems = useMemo(() => (data?.items || []).filter((i) => matchesFilters(i, filters, featureById)), [data, filters, featureById]);
   // Sprint planning shows only what can be sprinted (Tasks and Bugs); Stories live in By Feature / Needs attention.
-  const sprintItems = useMemo(() => visibleItems.filter((i) => canBeInSprint(i.type)), [visibleItems]);
+  // Closed tickets always show in the current and upcoming sprints, whatever the "show closed" toggle says.
+  const sprintItems = useMemo(() => {
+    const live = new Set((data?.sprints || []).filter((s) => s.timeFrame === 'current' || s.timeFrame === 'future').map((s) => s.path));
+    const withClosed = { ...filters, showClosed: true };
+    return (data?.items || []).filter(
+      (i) => canBeInSprint(i.type) && matchesFilters(i, isDone(i) && live.has(i.iterationPath) ? withClosed : filters, featureById),
+    );
+  }, [data, filters, featureById]);
   const shownCount = tab === 'plan' ? sprintItems.length : visibleItems.length;
   const totalCount = tab === 'plan' ? (data?.items || []).filter((i) => canBeInSprint(i.type)).length : data?.items.length;
   const attentionCount = useMemo(

@@ -144,14 +144,17 @@ function summarizeFeature(wi, onBoard) {
 }
 
 async function buildOverview() {
+  const sprints = await getSprints();
+  // Closed tickets normally age out after 21 days, but the current and upcoming sprints keep all of theirs.
+  const live = sprints.filter((s) => s.timeFrame === 'current' || s.timeFrame === 'future').map((s) => `'${s.path.replace(/'/g, "''")}'`);
+  const keepClosed = live.length ? ` OR ([System.State] <> 'Removed' AND [System.IterationPath] IN (${live.join(',')}))` : '';
   const wiql = {
     query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AssignedTo] = @Me
       AND [System.WorkItemType] IN (${WORK_TYPES.map((t) => `'${t}'`).join(',')})
-      AND ([System.State] NOT IN ('Closed','Removed','Done') OR ([System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 21))`,
+      AND ([System.State] NOT IN ('Closed','Removed','Done') OR ([System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 21)${keepClosed})`,
   };
-  const [q, sprints, boardIds, me, featureColumns] = await Promise.all([
+  const [q, boardIds, me, featureColumns] = await Promise.all([
     ado(`/${P}/_apis/wit/wiql?api-version=7.1`, { method: 'POST', body: wiql }),
-    getSprints(),
     getBoardFeatureIds(),
     ado('/_apis/connectionData'),
     getFeatureColumns(),
