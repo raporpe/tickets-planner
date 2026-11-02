@@ -26,4 +26,6 @@ export const api = {
   detail: (id) => request('GET', `/workitems/${id}`),
   addComment: (id, text) => request('POST', `/workitems/${id}/comments`, { text }),
   editComment: (id, commentId, text, format) => request('PATCH', `/workitems/${id}/comments/${commentId}`, { text, format }),
+  linkPullRequest: (id, ref) => request('POST', `/workitems/${id}/pull-requests`, { ref }),
+  unlinkPullRequest: (id, artifact) => request('DELETE', `/workitems/${id}/pull-requests`, { artifact }),
 };

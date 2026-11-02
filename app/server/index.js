@@ -407,6 +407,99 @@ async function getChildren(wi) {
     .sort((a, b) => isDone(a.state) - isDone(b.state) || a.id - b.id);
 }
 
+// ---------- pull request links ----------
+
+const PR_ARTIFACT = /^vstfs:\/\/\/Git\/PullRequestId\/([^%/]+)(?:%2F|\/)([^%/]+)(?:%2F|\/)(\d+)$/i;
+const prArtifactUrl = (projectId, repoId, prId) => `vstfs:///Git/PullRequestId/${projectId}%2F${repoId}%2F${prId}`;
+
+function toPullRequest(pr) {
+  const repo = pr.repository || {};
+  return {
+    id: pr.pullRequestId,
+    title: pr.title,
+    status: pr.isDraft && pr.status === 'active' ? 'draft' : pr.status,
+    repo: repo.name,
+    author: person(pr.createdBy),
+    created: pr.creationDate,
+    closed: pr.closedDate || null,
+    source: String(pr.sourceRefName || '').replace(/^refs\/heads\//, ''),
+    target: String(pr.targetRefName || '').replace(/^refs\/heads\//, ''),
+    url: `${ORG}/${encodeURIComponent(repo.project?.name || PROJECT)}/_git/${encodeURIComponent(repo.name || '')}/pullrequest/${pr.pullRequestId}`,
+  };
+}
+
+async function getPullRequests(wi) {
+  const links = (wi.relations || [])
+    .filter((r) => r.rel === 'ArtifactLink')
+    .map((r) => ({ artifact: r.url, m: PR_ARTIFACT.exec(r.url) }))
+    .filter((l) => l.m);
+  const prs = await Promise.all(
+    links.map(async ({ artifact, m }) => {
+      const [, projectId, repoId, prId] = m;
+      try {
+        const pr = await ado(`/${projectId}/_apis/git/repositories/${repoId}/pullrequests/${prId}?api-version=7.1`);
+        return { ...toPullRequest(pr), artifact };
+      } catch (e) {
+        return { id: Number(prId), artifact, error: e.status === 404 ? 'Not found or no access' : e.message };
+      }
+    }),
+  );
+  const order = { active: 0, draft: 1, completed: 2, abandoned: 3 };
+  return prs.sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4) || b.id - a.id);
+}
+
+function parsePrRef(input) {
+  const s = String(input || '').trim();
+  const url = /\/([^/]+)\/_git\/[^/]+\/pullrequest\/(\d+)/i.exec(s);
+  if (url) return { project: decodeURIComponent(url[1]), id: Number(url[2]) };
+  const bare = /^!?(\d+)$/.exec(s);
+  if (bare) return { project: PROJECT, id: Number(bare[1]) };
+  return null;
+}
+
+app.post('/api/workitems/:id/pull-requests', route(async (req) => {
+  const id = Number(req.params.id);
+  const ref = parsePrRef(req.body?.ref);
+  if (!ref) throw Object.assign(new Error('Paste a pull request URL (…/_git/repo/pullrequest/123) or a PR number'), { status: 400 });
+  let pr;
+  try {
+    pr = await ado(`/${encodeURIComponent(ref.project)}/_apis/git/pullrequests/${ref.id}?api-version=7.1`);
+  } catch (e) {
+    if (e.status === 404) throw Object.assign(new Error(`PR ${ref.id} not found in ${ref.project}`), { status: 404 });
+    throw e;
+  }
+  const artifact = prArtifactUrl(pr.repository.project.id, pr.repository.id, pr.pullRequestId);
+  const wi = await ado(`/_apis/wit/workitems/${id}?$expand=relations&api-version=7.1`);
+  const exists = (wi.relations || []).some((r) => r.rel === 'ArtifactLink' && r.url.toLowerCase() === artifact.toLowerCase());
+  if (exists) throw Object.assign(new Error(`PR ${pr.pullRequestId} is already linked`), { status: 409 });
+  const updated = await ado(`/_apis/wit/workitems/${id}?api-version=7.1`, {
+    method: 'PATCH',
+    contentType: 'application/json-patch+json',
+    body: [
+      { op: 'test', path: '/rev', value: wi.rev },
+      { op: 'add', path: '/relations/-', value: { rel: 'ArtifactLink', url: artifact, attributes: { name: 'Pull Request' } } },
+    ],
+  });
+  return { rev: updated.rev, pullRequest: { ...toPullRequest(pr), artifact } };
+}));
+
+app.delete('/api/workitems/:id/pull-requests', route(async (req) => {
+  const id = Number(req.params.id);
+  const artifact = String(req.body?.artifact || '').toLowerCase();
+  const wi = await ado(`/_apis/wit/workitems/${id}?$expand=relations&api-version=7.1`);
+  const idx = (wi.relations || []).findIndex((r) => r.rel === 'ArtifactLink' && r.url.toLowerCase() === artifact);
+  if (idx < 0) return { rev: wi.rev, unchanged: true };
+  const updated = await ado(`/_apis/wit/workitems/${id}?api-version=7.1`, {
+    method: 'PATCH',
+    contentType: 'application/json-patch+json',
+    body: [
+      { op: 'test', path: '/rev', value: wi.rev },
+      { op: 'remove', path: `/relations/${idx}` },
+    ],
+  });
+  return { rev: updated.rev };
+}));
+
 app.get('/api/workitems/:id/ancestors', route(async (req) => {
   const wi = await ado(`/_apis/wit/workitems/${Number(req.params.id)}?$expand=relations&api-version=7.1`);
   return { ancestors: await getAncestors(wi) };
@@ -427,6 +520,7 @@ app.get('/api/workitems/:id', route(async (req) => {
   const ancestors = await getAncestors(wi);
   const parent = ancestors.at(-1) || null;
   const children = await getChildren(wi);
+  const pullRequests = await getPullRequests(wi);
   return {
     id: wi.id,
     rev: wi.rev,
@@ -448,6 +542,7 @@ app.get('/api/workitems/:id', route(async (req) => {
     ancestors,
     childCount: children.length,
     children,
+    pullRequests,
     fields: Object.fromEntries(RICH_FIELDS.map((r) => [r, f[r] ?? null])),
     markdown: RICH_FIELDS.filter((r) => String(wi.multilineFieldsFormat?.[r] || '').toLowerCase() === 'markdown'),
     comments: (comments.comments || []).map(toComment),

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Loader2, MessageSquare, Pencil, RefreshCw } from 'lucide-react';
+import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Loader2, MessageSquare, Pencil, Plus, RefreshCw, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -75,6 +75,136 @@ function Hierarchy({ detail, item, features, onPick, disabled, onOpen }) {
       </SectionHeader>
       <HierarchyTree ancestors={detail.ancestors} self={detail} children={detail.children} onOpen={onOpen} />
       {detail.ancestors.length === 0 && <MissingParent type={detail.type} className="mt-1.5" />}
+    </section>
+  );
+}
+
+const PR_STATUS = {
+  active: { label: 'Active', Icon: GitPullRequest, tone: 'text-emerald-600 dark:text-emerald-400', pill: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' },
+  draft: { label: 'Draft', Icon: GitPullRequestDraft, tone: 'text-muted-foreground', pill: 'bg-muted text-muted-foreground' },
+  completed: { label: 'Merged', Icon: GitMerge, tone: 'text-violet-600 dark:text-violet-400', pill: 'bg-violet-50 text-violet-700 dark:bg-violet-400/10 dark:text-violet-300' },
+  abandoned: { label: 'Abandoned', Icon: GitPullRequestClosed, tone: 'text-muted-foreground', pill: 'bg-muted text-muted-foreground line-through' },
+};
+
+function PullRequestRow({ pr, who, onUnlink }) {
+  const s = PR_STATUS[pr.status] || PR_STATUS.active;
+  if (pr.error) {
+    return (
+      <li className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground">
+        <GitPullRequest className="size-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">
+          PR {pr.id} · {pr.error}
+        </span>
+        <UnlinkButton onClick={onUnlink} />
+      </li>
+    );
+  }
+  return (
+    <li className="group flex items-start gap-2.5 rounded-md px-2 py-1.5 hover:bg-accent/60">
+      <s.Icon className={cn('mt-0.5 size-4 shrink-0', s.tone)} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <a href={pr.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-[13px] font-medium hover:text-primary hover:underline">
+            {pr.title}
+          </a>
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">!{pr.id}</span>
+        </div>
+        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={`${pr.source} → ${pr.target}`}>
+          <span title={fullDate(pr.closed || pr.created)}>
+            {pr.closed ? `${pr.status === 'completed' ? 'Merged' : 'Closed'} ${ago(pr.closed)}` : `Opened ${ago(pr.created)}`}
+          </span>{' '}
+          by {who(pr.author)} · {pr.repo} → {pr.target}
+        </div>
+      </div>
+      <span className={cn('mt-px inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium', s.pill)}>{s.label}</span>
+      <UnlinkButton onClick={onUnlink} />
+    </li>
+  );
+}
+
+function UnlinkButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Unlink pull request"
+      title="Unlink from this work item"
+      className="-mr-1 shrink-0 rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <Unlink className="size-3.5" />
+    </button>
+  );
+}
+
+function PullRequests({ prs, who, onLink, onUnlink, onEditingChange }) {
+  const [adding, setAdding] = useState(false);
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => onEditingChange(adding && !!value.trim()), [adding, value, onEditingChange]);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!value.trim() || busy) return;
+    setBusy(true);
+    const ok = await onLink(value.trim());
+    setBusy(false);
+    if (ok) {
+      setValue('');
+      setAdding(false);
+    }
+  }
+
+  return (
+    <section aria-label="Pull requests">
+      <SectionHeader
+        action={
+          !adding && (
+            <Button size="xs" variant="ghost" className="-mr-2 text-muted-foreground" onClick={() => setAdding(true)}>
+              <Plus className="size-3.5" /> Link PR
+            </Button>
+          )
+        }
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <GitPullRequest className="size-3.5" /> Pull requests
+          {prs.length > 0 && <span className="tabular-nums">{prs.length}</span>}
+        </span>
+      </SectionHeader>
+      {adding && (
+        <form onSubmit={submit} className="mb-2 flex items-center gap-2">
+          <input
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setValue('');
+                setAdding(false);
+              }
+            }}
+            placeholder="Paste a PR URL or number"
+            aria-label="Pull request URL or number"
+            disabled={busy}
+            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          />
+          <Button size="sm" type="submit" disabled={busy || !value.trim()}>
+            {busy && <Loader2 className="size-3.5 animate-spin" />} Link
+          </Button>
+          <Button size="sm" variant="ghost" type="button" disabled={busy} onClick={() => (setValue(''), setAdding(false))}>
+            Cancel
+          </Button>
+        </form>
+      )}
+      {prs.length > 0 ? (
+        <ul className="-mx-2 flex flex-col">
+          {prs.map((pr) => (
+            <PullRequestRow key={pr.artifact} pr={pr} who={who} onUnlink={() => onUnlink(pr)} />
+          ))}
+        </ul>
+      ) : (
+        !adding && <p className="text-[13px] text-muted-foreground">No linked pull requests.</p>
+      )}
     </section>
   );
 }
@@ -454,6 +584,28 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     }
   }
 
+  async function linkPullRequest(ref) {
+    try {
+      const r = await api.linkPullRequest(detail.id, ref);
+      setDetail((d) => ({ ...d, rev: r.rev, pullRequests: [r.pullRequest, ...d.pullRequests.filter((p) => p.artifact !== r.pullRequest.artifact)] }));
+      toast.success(`PR ${r.pullRequest.id} linked to #${detail.id}`);
+      return true;
+    } catch (e) {
+      toast.error(`#${detail.id}: PR not linked`, { description: e.message });
+      return false;
+    }
+  }
+
+  async function unlinkPullRequest(pr) {
+    try {
+      const r = await api.unlinkPullRequest(detail.id, pr.artifact);
+      setDetail((d) => ({ ...d, rev: r.rev, pullRequests: d.pullRequests.filter((p) => p.artifact !== pr.artifact) }));
+      toast.success(`PR ${pr.id} unlinked from #${detail.id}`, pr.url ? { action: { label: 'Undo', onClick: () => linkPullRequest(pr.url) } } : undefined);
+    } catch (e) {
+      toast.error(`#${detail.id}: PR not unlinked`, { description: e.message });
+    }
+  }
+
   async function editComment(commentId, text, format) {
     try {
       const c = await api.editComment(detail.id, commentId, text, format);
@@ -599,6 +751,15 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                     )}
                   </dl>
                 </section>
+
+                <PullRequests
+                  key={`prs-${detail.id}`}
+                  prs={detail.pullRequests || []}
+                  who={who}
+                  onLink={linkPullRequest}
+                  onUnlink={unlinkPullRequest}
+                  onEditingChange={tracker('pr-link')}
+                />
 
                 {fieldsFor(detail).map((ref) => (
                   <FieldSection
