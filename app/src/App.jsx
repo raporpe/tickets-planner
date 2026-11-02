@@ -14,6 +14,7 @@ import { PlanView } from '@/components/plan-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
 import { ItemDetail } from '@/components/item-detail';
+import { TicketSearch } from '@/components/ticket-search';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
 import { attentionReasons, canBeInSprint, featuresInSprint, matchesFilters, needsAction } from '@/lib/planning';
@@ -285,6 +286,7 @@ export default function App() {
             <span className="hidden text-xs text-muted-foreground md:inline">
               {auth.user} · {auth.method === 'device-code' ? 'device code' : 'Azure CLI'}
             </span>
+            {data && <TicketSearch data={data} />}
             <Button size="sm" variant="outline" onClick={load} disabled={loading} aria-label="Refresh from Azure DevOps">
               <RefreshCw className={loading ? 'animate-spin' : ''} />
               Refresh

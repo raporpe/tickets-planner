@@ -34,6 +34,8 @@ Hover a card or row while holding **Shift** to preview its parents, or **Ctrl** 
 
 Hover a card or row and press **C** to copy it as `#id Title [State]`, with the id linked to Azure DevOps (a real link when pasted into Teams or Outlook, a Markdown link in plain-text places such as AI chats). Long titles are shortened to about 80 characters.
 
+Press **Ctrl+K** (**⌘K** on Mac), or click "Find ticket", to search your tickets and Features by title words, by id, or by pasting an Azure DevOps link; Enter opens the detail panel. An id or link for a ticket that isn't in the planner can still be opened straight from ADO.
+
 The sun/moon button in the header switches between light and dark themes. The choice is remembered in the browser; until you pick one, the app follows the OS setting.
 
 The app never creates iterations or changes team settings; it only edits work items you own.
