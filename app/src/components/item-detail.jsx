@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, MessageSquare, Pencil, RefreshCw } from 'lucide-react';
+import { ExternalLink, Loader2, MessageSquare, Pencil, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -25,7 +25,7 @@ function fieldsFor(detail) {
   return show;
 }
 
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 function ago(d) {
   if (!d) return '';
   const s = (new Date(d).getTime() - Date.now()) / 1000;
@@ -46,16 +46,33 @@ const fullDate = (d) => (d ? new Date(d).toLocaleString() : '');
 function Meta({ label, children }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 truncate text-[13px]">{children || <span className="text-muted-foreground">—</span>}</dd>
     </div>
   );
 }
 
-function Hierarchy({ detail, onOpen }) {
+function When({ date, by }) {
+  return (
+    <>
+      <span title={fullDate(date)}>{ago(date)}</span>
+      {by && <span className="block truncate text-xs text-muted-foreground">by {by}</span>}
+    </>
+  );
+}
+
+function Hierarchy({ detail, item, features, onPick, disabled, onOpen }) {
   return (
     <section aria-label="Hierarchy">
-      <SectionHeader>Hierarchy</SectionHeader>
+      <SectionHeader
+        action={
+          item && (
+            <FeaturePicker item={item} features={features} onPick={onPick} disabled={disabled} label="Change Feature" className="-mr-2 max-w-64" />
+          )
+        }
+      >
+        Hierarchy
+      </SectionHeader>
       <HierarchyTree ancestors={detail.ancestors} self={detail} children={detail.children} onOpen={onOpen} />
       {detail.ancestors.length === 0 && <MissingParent type={detail.type} className="mt-1.5" />}
     </section>
@@ -64,9 +81,9 @@ function Hierarchy({ detail, onOpen }) {
 
 function SectionHeader({ children, action }) {
   return (
-    <div className="mb-2 flex items-center gap-2">
+    <div className="mb-2 flex min-h-7 items-center gap-2">
       <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{children}</h3>
-      <div className="ml-auto">{action}</div>
+      <div className="ml-auto min-w-0">{action}</div>
     </div>
   );
 }
@@ -93,10 +110,10 @@ function TitleEditor({ title, onSave, onEditingChange }) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="group/title -mx-1.5 w-full rounded px-1.5 py-0.5 text-left text-[17px] leading-snug font-semibold hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="group/title -mx-1.5 w-full rounded px-1.5 py-0.5 text-left text-lg leading-snug font-semibold hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           {title}
-          <Pencil className="ml-1.5 inline size-3.5 align-baseline text-muted-foreground opacity-0 group-hover/title:opacity-100" />
+          <Pencil className="ml-1.5 inline size-3.5 align-baseline text-muted-foreground opacity-40 transition-opacity group-hover/title:opacity-100 group-focus-visible/title:opacity-100" />
         </button>
       </SheetTitle>
     );
@@ -122,7 +139,7 @@ function TitleEditor({ title, onSave, onEditingChange }) {
           }
         }}
         aria-label="Title"
-        className="min-h-0 resize-none text-[17px]! leading-snug font-semibold"
+        className="min-h-0 resize-none text-lg! leading-snug font-semibold"
         rows={2}
       />
     </div>
@@ -139,7 +156,7 @@ function FieldSection({ refName, html, markdown, onSave, onEditingChange }) {
       <SectionHeader
         action={
           !editing && (
-            <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
+            <Button variant="ghost" size="xs" data-detail-edit onClick={() => setEditing(true)} title="Edit (E)">
               <Pencil /> Edit
             </Button>
           )
@@ -163,11 +180,7 @@ function FieldSection({ refName, html, markdown, onSave, onEditingChange }) {
           minHeight="min-h-40"
         />
       ) : (
-        <div
-          className="-mx-2 cursor-text rounded-md px-2 py-1 hover:bg-accent/30"
-          onDoubleClick={() => setEditing(true)}
-          title="Double-click to edit"
-        >
+        <div className="py-1">
           <RichView html={html} markdown={markdown} empty={`No ${FIELD_LABELS[refName].toLowerCase()}.`} />
         </div>
       )}
@@ -200,11 +213,11 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="text-[13px] font-medium">{comment.createdBy?.name}</span>
-          <time className="text-[11px] text-muted-foreground" dateTime={comment.createdDate} title={fullDate(comment.createdDate)}>
+          <time className="text-xs text-muted-foreground" dateTime={comment.createdDate} title={fullDate(comment.createdDate)}>
             {ago(comment.createdDate)}
           </time>
           {edited && (
-            <span className="text-[11px] text-muted-foreground" title={fullDate(comment.modifiedDate)}>
+            <span className="text-xs text-muted-foreground" title={fullDate(comment.modifiedDate)}>
               · edited
             </span>
           )}
@@ -249,7 +262,7 @@ function NewComment({ onAdd, onEditingChange }) {
       <button
         type="button"
         onClick={() => setActive(true)}
-        className="w-full rounded-md border border-dashed px-3 py-2 text-left text-[13px] text-muted-foreground hover:border-foreground/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-left text-[13px] text-muted-foreground hover:border-foreground/30 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         Add a comment…
       </button>
@@ -296,7 +309,9 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   const [loading, setLoading] = useState(false);
   const editors = useRef(new Set());
   const [, force] = useState(0);
+  const [confirming, setConfirming] = useState(false);
   const item = data?.items.find((i) => i.id === id);
+  const who = (p) => (p?.id && p.id === data?.me?.id ? 'you' : p?.name);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -313,6 +328,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
 
   useEffect(() => {
     setDetail(null);
+    setConfirming(false);
     editors.current = new Set();
     load();
   }, [load]);
@@ -349,9 +365,37 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   };
 
   function requestClose() {
-    if (editors.current.size && !window.confirm('Discard unsaved changes?')) return;
+    if (editors.current.size) return setConfirming(true);
     onClose();
   }
+
+  // E edits the first text field; J / K step to the next / previous card on the page.
+  useEffect(() => {
+    if (!id) return;
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const k = e.key.toLowerCase();
+      if (k === 'e') {
+        const edit = document.querySelector('[data-detail-edit]');
+        if (edit) {
+          e.preventDefault();
+          edit.click();
+        }
+      } else if (k === 'j' || k === 'k') {
+        e.preventDefault();
+        if (editors.current.size) return setConfirming(true);
+        const known = new Set(data?.items.map((i) => i.id));
+        const ids = [...new Set([...document.querySelectorAll('[data-item-id]')].map((el) => Number(el.dataset.itemId)))].filter((n) => known.has(n));
+        const at = ids.indexOf(id);
+        const next = at === -1 ? ids[0] : ids[at + (k === 'j' ? 1 : -1)];
+        if (next) openItem(next);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [id, data, openItem]);
 
   /**
    * Saves with optimistic concurrency. ADO bumps the revision on unrelated changes (e.g. comments),
@@ -427,7 +471,14 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     <Sheet open={!!id} onOpenChange={(o) => !o && requestClose()}>
       <SheetContent
         className="gap-0 sm:max-w-2xl"
-        onEscapeKeyDown={(e) => editors.current.size && e.preventDefault()}
+        onEscapeKeyDown={(e) => {
+          if (!editors.current.size) return;
+          e.preventDefault();
+          // Escape inside an editor cancels that edit; only ask when it comes from elsewhere.
+          const t = e.target;
+          if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) return;
+          setConfirming(true);
+        }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {!detail ? (
@@ -447,8 +498,8 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
           </>
         ) : (
           <>
-            <header className="flex flex-col gap-2 border-b px-5 pt-4 pb-3">
-              <div className="flex items-center gap-2 pr-8">
+            <header className="flex flex-col gap-2 border-b px-5 pt-3 pb-3">
+              <div className="flex h-7 items-center gap-2 pr-8">
                 <TypeLabel type={detail.type} />
                 <a
                   href={detail.url}
@@ -463,59 +514,91 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                 ) : (
                   <StatePill state={detail.state} />
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="ml-auto size-7"
+                {detail.priority != null && (
+                  <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground tabular-nums" title={`Priority ${detail.priority}`}>
+                    P{detail.priority}
+                  </span>
+                )}
+                {pending && (
+                  <span role="status" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" /> Saving…
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="ml-auto rounded-sm p-1 text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40"
                   onClick={load}
                   disabled={loading}
                   aria-label="Reload from Azure DevOps"
+                  title="Reload from Azure DevOps"
                 >
-                  <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
-                </Button>
+                  <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+                </button>
               </div>
               <TitleEditor title={detail.title} onSave={saveTitle} onEditingChange={tracker('title')} />
               <SheetDescription className="sr-only">
                 {detail.type} {detail.id} details
               </SheetDescription>
               {item && (
-                <div className="-ml-1 flex flex-wrap items-center gap-2">
-                  <FeaturePicker item={item} features={features} onPick={(parentId) => onUpdate(item, { parentId })} disabled={pending} />
-                  <SprintSelect item={item} data={data} onChange={(p) => onUpdate(item, p)} disabled={pending} />
+                <div className="-ml-2 flex flex-wrap items-center gap-2">
+                  <SprintSelect
+                    item={item}
+                    data={data}
+                    onChange={(p) => onUpdate(item, p)}
+                    disabled={pending}
+                    className="border-0 bg-transparent px-2 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground dark:bg-transparent dark:hover:bg-accent"
+                  />
                 </div>
               )}
             </header>
 
+            {confirming && (
+              <div role="alertdialog" aria-label="Unsaved edits" className="flex items-center gap-2 border-b bg-amber-50 px-5 py-2 text-[13px] text-amber-900 dark:bg-amber-300/10 dark:text-amber-100">
+                <span className="mr-auto">You have unsaved edits.</span>
+                <Button size="xs" variant="ghost" autoFocus onClick={() => setConfirming(false)}>
+                  Keep editing
+                </Button>
+                <Button size="xs" variant="destructive" onClick={onClose}>
+                  Discard
+                </Button>
+              </div>
+            )}
+
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="flex flex-col gap-6 px-5 py-4">
-                <Hierarchy detail={detail} onOpen={openItem} />
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-                  <Meta label="Assigned to">{detail.assignedTo?.name}</Meta>
-                  <Meta label="Area">{detail.areaPath?.replace(/^SAN SA\\?/, '') || 'SAN SA'}</Meta>
-                  <Meta label="Created">
-                    <span title={fullDate(detail.createdDate)}>
-                      {ago(detail.createdDate)} · {detail.createdBy?.name}
-                    </span>
-                  </Meta>
-                  <Meta label="Last changed">
-                    <span title={fullDate(detail.changedDate)}>
-                      {ago(detail.changedDate)} · {detail.changedBy?.name}
-                    </span>
-                  </Meta>
-                  <Meta label="Priority">{detail.priority}</Meta>
-                  {detail.tags.length > 0 && (
-                    <div className="col-span-full">
-                      <dt className="text-[11px] text-muted-foreground">Tags</dt>
-                      <dd className="mt-1 flex flex-wrap gap-1">
-                        {detail.tags.map((t) => (
-                          <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
-                            {t}
-                          </span>
-                        ))}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
+                <Hierarchy
+                  detail={detail}
+                  item={item}
+                  features={features}
+                  onPick={(parentId) => onUpdate(item, { parentId })}
+                  disabled={pending}
+                  onOpen={(next) => (editors.current.size ? setConfirming(true) : openItem(next))}
+                />
+                <section aria-label="Details">
+                  <SectionHeader>Details</SectionHeader>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                    <Meta label="Assigned to">{who(detail.assignedTo)?.replace(/^you$/, 'You')}</Meta>
+                    <Meta label="Area">{detail.areaPath?.replace(/^SAN SA\\?/, '') || 'SAN SA'}</Meta>
+                    <Meta label="Created">
+                      <When date={detail.createdDate} by={who(detail.createdBy)} />
+                    </Meta>
+                    <Meta label="Last changed">
+                      <When date={detail.changedDate} by={who(detail.changedBy)} />
+                    </Meta>
+                    {detail.tags.length > 0 && (
+                      <div className="col-span-full">
+                        <dt className="text-xs text-muted-foreground">Tags</dt>
+                        <dd className="mt-1 flex flex-wrap gap-1">
+                          {detail.tags.map((t) => (
+                            <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                              {t}
+                            </span>
+                          ))}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                </section>
 
                 {fieldsFor(detail).map((ref) => (
                   <FieldSection
@@ -536,7 +619,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                     </span>
                   </SectionHeader>
                   <NewComment key={`new-${detail.id}`} onAdd={addComment} onEditingChange={tracker('new-comment')} />
-                  {detail.comments.length > 0 ? (
+                  {detail.comments.length > 0 && (
                     <ul className="mt-4 flex flex-col gap-4">
                       {detail.comments.map((c) => (
                         <Comment
@@ -548,8 +631,6 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                         />
                       ))}
                     </ul>
-                  ) : (
-                    <p className="mt-3 text-[13px] text-muted-foreground">No comments yet.</p>
                   )}
                 </section>
               </div>

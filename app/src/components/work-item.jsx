@@ -69,7 +69,7 @@ export function SprintSelect({ item, data, onChange, disabled, className }) {
   );
 }
 
-export function FeaturePicker({ item, features, onPick, disabled, compact }) {
+export function FeaturePicker({ item, features, onPick, disabled, compact, label, className }) {
   const [open, setOpen] = useState(false);
   const current = features.find((f) => f.id === item.featureId);
   const board = features
@@ -86,12 +86,13 @@ export function FeaturePicker({ item, features, onPick, disabled, compact }) {
           className={cn(
             'group/fp inline-flex min-w-0 max-w-full items-center gap-1 rounded px-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
             !current || !item.onBoard ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
-            compact ? 'h-5' : 'h-7',
+            compact ? 'h-5' : 'h-7 px-2',
+            className,
           )}
         >
           {!current || !item.onBoard ? <TriangleAlert className="size-3 shrink-0" /> : null}
-          <span className="truncate">{current ? current.title : 'No board Feature'}</span>
-          <ChevronsUpDown className="size-3 shrink-0 opacity-0 group-hover/fp:opacity-60" />
+          <span className="truncate">{current ? (item.onBoard && label) || current.title : 'No board Feature'}</span>
+          <ChevronsUpDown className={cn('size-3 shrink-0', compact ? 'opacity-0 group-hover/fp:opacity-60' : 'opacity-50')} />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[30rem] p-0" align="start">
