@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarClock, CalendarPlus, ChevronLeft, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -222,12 +222,23 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   }, [data, items]);
 
   const backlog = columns.find((c) => c.kind === 'backlog');
-  const [nextSprint, laterSprint] = data.sprints.filter((s) => s.timeFrame === 'future');
-  const next = nextSprint && { ...columns.find((c) => c.key === nextSprint.path), next: true };
+  // The whiteboard shows one sprint: the one in progress by default, and ‹ › step through the others.
+  const sprints = data.sprints;
+  const firstFuture = sprints.find((s) => s.timeFrame === 'future');
+  const defaultSprint = sprints.find((s) => s.timeFrame === 'current') ?? firstFuture ?? sprints[sprints.length - 1];
+  const [boardPath, setBoardPath] = useState(null);
+  const boardIdx = Math.max(0, sprints.findIndex((s) => s.path === (boardPath ?? defaultSprint?.path)));
+  const boardSprint = sprints[boardIdx];
+  const laterSprint = sprints[boardIdx + 1];
+  const next = boardSprint && { ...columns.find((c) => c.key === boardSprint.path), next: boardSprint === firstFuture };
+  const step = (d) => {
+    const s = sprints[boardIdx + d];
+    if (s) setBoardPath(s.path);
+  };
   // The sprint after the whiteboard's sits in a side drawer, so work can be pushed one sprint further.
   const later = laterSprint && columns.find((c) => c.key === laterSprint.path);
-  // Everything that isn't the backlog or an upcoming sprint lives in the bottom drawer: the sprint in progress
-  // first, then any other sprint or legacy iteration that still holds tickets.
+  // Everything that isn't the backlog or one of those two lives in the bottom drawer: the sprint in progress
+  // first (when the whiteboard shows another one), then any other sprint or legacy iteration that still holds tickets.
   const drawerCols = columns
     .filter((c) => c !== backlog && c.key !== next?.key && c.key !== later?.key)
     .filter((c) => c.sprint?.timeFrame === 'current' || byCol.get(c.key).length);
@@ -430,8 +441,21 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
             )}
           >
             <header className="flex items-start gap-2 border-b px-3 py-2.5">
+              <div className="-ml-1 flex shrink-0 items-center">
+                <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" onClick={() => step(-1)} disabled={boardIdx === 0} aria-label="Previous sprint" title="Previous sprint">
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" onClick={() => step(1)} disabled={boardIdx >= sprints.length - 1} aria-label="Next sprint" title="Next sprint">
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
               <ColumnTitle col={next} />
               <div className="ml-auto flex items-center gap-1">
+                {boardPath && boardPath !== defaultSprint?.path && (
+                  <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setBoardPath(null)}>
+                    Back to {defaultSprint.timeFrame === 'current' ? 'current' : defaultSprint.name}
+                  </Button>
+                )}
                 {nextList.some((i) => layout[i.id]?.col === next.key) && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -566,17 +590,17 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
         >
           <span aria-hidden className="absolute top-1.5 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-foreground/15 transition-[width,background-color] group-hover:w-12 group-hover:bg-foreground/25" />
           <CalendarClock className="size-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">{current ? current.title : 'No sprint in progress'}</span>
+          <span className="text-sm font-semibold">{current ? current.title : 'Other sprints'}</span>
           {current && <span className="text-xs text-muted-foreground">{current.subtitle}</span>}
           <span className="text-xs text-muted-foreground">
             · {drawerCount} open {drawerCount === 1 ? 'ticket' : 'tickets'}
-            {drawerCols.some((c) => c !== current) && ' (incl. other iterations)'}
+            {current && drawerCols.some((c) => c !== current) && ' (incl. other iterations)'}
           </span>
           <ChevronUp className={cn('ml-auto size-4 text-muted-foreground transition-transform duration-300', drawerOpen && 'rotate-180')} />
         </button>
         <div id="sprint-drawer" inert={!drawerOpen} className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-3">
           {drawerCols.length === 0 && (
-            <p className="m-auto text-sm text-muted-foreground">Nothing in progress. When {next?.title ?? 'the next sprint'} starts it moves down here.</p>
+            <p className="m-auto text-sm text-muted-foreground">No open tickets in other sprints or iterations.</p>
           )}
           {drawerCols.map((col) => {
             const list = byCol.get(col.key);
