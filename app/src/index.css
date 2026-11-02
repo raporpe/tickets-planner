@@ -167,6 +167,12 @@
   }
 }
 
+/* The whiteboard pans by dragging; a slim scrollbar still shows there is more to the side. */
+@utility whiteboard-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
+}
+
 @utility whiteboard-dots {
   background-image: radial-gradient(circle at 1px 1px, color-mix(in oklch, var(--foreground) 16%, transparent) 1px, transparent 1.5px);
   background-size: 18px 18px;

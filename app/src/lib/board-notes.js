@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
 // Free-floating notes on the Sprint planning whiteboard. Browser-only scribbles, never ticket data.
-// Shape: { [id]: { col, x, y, text } } where x is 0..1 across the board's free width and y is px from the top.
+// Shape: { [id]: { col, px, y, text } } with px/y in pixels from the board's top-left (older notes have x as 0..1).
 const KEY = 'planner.board-notes.v1';
 const listeners = new Set();
 let cache = read();

@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
 // Card positions on the Sprint planning board. Pure view state (where you left a card), never ticket data.
-// Shape: { [id]: { col, x, y, z } } where x is 0..1 across the column's free width and y is px from the top.
+// Shape: { [id]: { col, px, y, z } } with px/y in pixels from the board's top-left (older saves have x as 0..1).
 const KEY = 'planner.board-layout.v1';
 const listeners = new Set();
 let cache = read();

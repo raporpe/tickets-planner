@@ -11,13 +11,17 @@ import { useBoardLayout } from '@/lib/board-layout';
 import { useBoardNotes } from '@/lib/board-notes';
 import { buildColumns, canBeInSprint, columnKeyOf, isDone } from '@/lib/planning';
 
-const MIN_W = 236;
-const MAX_W = 320;
+const CARD_W = 272;
 const PAD = 12;
 const GAP = 10;
 const EST_H = 130;
 const NOTE_W = 288;
 const SLACK = 180; // free space below the lowest card, so there is always room to drop
+const SLACK_X = 320; // and to the right of the rightmost one, so the board can grow sideways
+// Older saves stored x as a fraction of the board's free width; read them against at least this width
+// so a narrower window scrolls instead of squeezing cards on top of each other.
+const LEGACY_W = 1600;
+const legacyUsable = (viewW, w) => Math.max(0, Math.max(viewW, LEGACY_W) - w - PAD * 2);
 const NO_DRAG = 'input, textarea, select, [role="combobox"], [aria-haspopup], [data-no-drag]';
 const ORDER = (a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCompare(b.type) || b.id - a.id;
 
@@ -25,31 +29,31 @@ const ORDER = (a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCo
  * Where each card sits on the whiteboard. Cards you have moved keep their spot; the rest flow into
  * evenly spread lanes below them, so new arrivals never land on top of a group you made.
  */
-function layoutBoard(list, colKey, width, heights, layout) {
-  const lanes = Math.max(1, Math.floor((width - PAD * 2 + GAP) / (MIN_W + GAP)));
-  const fit = (width - PAD * 2 - (lanes - 1) * GAP) / lanes;
-  // A single lane still leaves some sideways room, so cards can be nudged and grouped.
-  const cardW = Math.max(200, Math.min(MAX_W, lanes === 1 ? fit - 56 : fit));
-  const usable = Math.max(0, width - cardW - PAD * 2);
+function layoutBoard(list, colKey, viewW, heights, layout) {
+  const lanes = Math.max(1, Math.floor((viewW - PAD * 2 + GAP) / (CARD_W + GAP)));
+  const legacy = legacyUsable(viewW, CARD_W);
   const pos = new Map();
   let bottom = 0;
+  let right = 0;
   const free = [];
   for (const item of list) {
     const s = layout[item.id];
     if (s?.col === colKey) {
-      const p = { x: PAD + s.x * usable, y: s.y, z: s.z ?? 1 };
+      const p = { x: s.px ?? PAD + (s.x ?? 0) * legacy, y: s.y, z: s.z ?? 1 };
       pos.set(item.id, p);
       bottom = Math.max(bottom, p.y + (heights[item.id] ?? EST_H));
+      right = Math.max(right, p.x + CARD_W);
     } else free.push(item);
   }
-  const laneX = (i) => PAD + (lanes > 1 ? (i * usable) / (lanes - 1) : 0);
+  const laneX = (i) => PAD + i * (CARD_W + GAP);
   const laneY = Array(lanes).fill(bottom ? bottom + GAP * 3 : PAD);
   for (const item of free) {
     const i = laneY.indexOf(Math.min(...laneY));
     pos.set(item.id, { x: laneX(i), y: laneY[i], z: 0 });
     laneY[i] += (heights[item.id] ?? EST_H) + GAP;
+    right = Math.max(right, laneX(i) + CARD_W);
   }
-  return { pos, usable, cardW, height: Math.max(bottom, ...laneY) + SLACK };
+  return { pos, cardW: CARD_W, right, height: Math.max(bottom, ...laneY) + SLACK };
 }
 
 function ColumnTitle({ col }) {
@@ -204,7 +208,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
   const [heights, setHeights] = useState({});
-  const [boardWidth, setBoardWidth] = useState(MIN_W + PAD * 2);
+  const [boardWidth, setBoardWidth] = useState(CARD_W + PAD * 2);
   const board = useRef(null);
   const cardEls = useRef(new Map());
   const resizer = useRef(null);
@@ -301,17 +305,16 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     if (col.key === next?.key && computed.current) {
       const el = board.current;
       const r = el.getBoundingClientRect();
-      const { usable, pos } = computed.current;
-      const px = Math.min(Math.max(PAD, x - r.left - d.dx), PAD + usable);
+      const { pos } = computed.current;
+      const px = Math.max(PAD, Math.round(x - r.left - d.dx + el.scrollLeft));
       const py = Math.max(PAD, y - r.top - d.dy + el.scrollTop);
-      const frac = (v) => (usable > 0 ? (v - PAD) / usable : 0);
       // Freeze everything else on the board where it is now, so nothing shuffles around the drop.
       const entries = {};
       pos.forEach((p, id) => {
-        if (id !== d.id) entries[id] = { col: col.key, x: frac(p.x), y: p.y, z: p.z };
+        if (id !== d.id) entries[id] = { col: col.key, px: Math.round(p.x), y: p.y, z: p.z };
       });
       const topZ = Math.max(0, ...Object.values(layout).map((v) => v.z ?? 0));
-      entries[d.id] = { col: col.key, x: frac(px), y: py, z: topZ + 1 };
+      entries[d.id] = { col: col.key, px, y: py, z: topZ + 1 };
       place(entries);
     }
     if (item.iterationPath !== col.path) onUpdate(item, { iterationPath: col.path });
@@ -395,17 +398,46 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const placed = useMemo(() => next && layoutBoard(nextList, next.key, boardWidth, heights, layout), [nextList, next?.key, boardWidth, heights, layout]);
   computed.current = placed;
 
-  const noteUsable = Math.max(0, boardWidth - NOTE_W - PAD * 2);
-  const notePos = useCallback(
-    (px, py) => ({ x: noteUsable > 0 ? Math.min(1, Math.max(0, (px - PAD) / noteUsable)) : 0, y: Math.max(PAD, Math.round(py)) }),
-    [noteUsable],
-  );
+  const noteLegacy = legacyUsable(boardWidth, NOTE_W);
+  const noteLeft = (n) => n.px ?? PAD + (n.x ?? 0) * noteLegacy;
+  const notePos = useCallback((px, py) => ({ px: Math.max(PAD, Math.round(px)), y: Math.max(PAD, Math.round(py)) }), []);
   const boardNotes = next ? Object.entries(notes).filter(([, n]) => n.col === next.key) : [];
   const boardHeight = placed ? Math.max(placed.height, ...boardNotes.map(([, n]) => n.y + 120 + SLACK)) : 0;
+  const canvasWidth = placed ? Math.max(boardWidth, placed.right + SLACK_X, ...boardNotes.map(([, n]) => noteLeft(n) + NOTE_W + SLACK_X)) : 0;
   const addNoteAt = (e) => {
     if (e.target.closest('[data-card-id], [data-note]')) return;
     const r = e.currentTarget.getBoundingClientRect();
     setEditingNote(addNote({ col: next.key, ...notePos(e.clientX - r.left - 8, e.clientY - r.top - 14) }));
+  };
+
+  // Dragging empty space pans the whiteboard, like a canvas.
+  const startPan = (e) => {
+    if (e.button !== 0 || e.target.closest('[data-card-id], [data-note]')) return;
+    const el = board.current;
+    const s = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
+    let panning = false;
+    const move = (ev) => {
+      const dx = ev.clientX - s.x;
+      const dy = ev.clientY - s.y;
+      if (!panning && Math.hypot(dx, dy) < 4) return;
+      if (!panning) {
+        panning = true;
+        document.body.style.cursor = 'grabbing';
+        window.getSelection()?.removeAllRanges();
+      }
+      ev.preventDefault();
+      el.scrollLeft = s.l - dx;
+      el.scrollTop = s.t - dy;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      document.body.style.cursor = '';
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
 
   return (
@@ -469,8 +501,13 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                 <Count items={nextList} />
               </div>
             </header>
-            <div ref={board} className="no-scrollbar relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="whiteboard-dots relative isolate min-h-full select-none" style={{ height: boardHeight }} onDoubleClick={addNoteAt}>
+            <div ref={board} className="whiteboard-scroll relative min-h-0 flex-1 overflow-auto">
+              <div
+                className="whiteboard-dots relative isolate min-h-full cursor-grab select-none"
+                style={{ height: boardHeight, width: canvasWidth || undefined }}
+                onPointerDown={startPan}
+                onDoubleClick={addNoteAt}
+              >
                 {nextList.length === 0 && boardNotes.length === 0 && (
                   <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
                 )}
@@ -479,7 +516,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                     key={id}
                     id={id}
                     note={n}
-                    left={PAD + n.x * noteUsable}
+                    left={noteLeft(n)}
                     top={n.y}
                     editing={editingNote === id}
                     onEdit={setEditingNote}
