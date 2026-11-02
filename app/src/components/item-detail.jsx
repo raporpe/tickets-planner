@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Loader2, MessageSquare, Pencil, Plus, RefreshCw, Unlink } from 'lucide-react';
+import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, RefreshCw, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -137,73 +137,78 @@ function UnlinkButton({ onClick }) {
 }
 
 function PullRequests({ prs, who, onLink, onUnlink, onEditingChange }) {
-  const [adding, setAdding] = useState(false);
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => onEditingChange(adding && !!value.trim()), [adding, value, onEditingChange]);
+  const [error, setError] = useState(null);
+  const input = useRef(null);
+  const ready = !!value.trim();
+  useEffect(() => onEditingChange(ready), [ready, onEditingChange]);
 
   async function submit(e) {
     e.preventDefault();
-    if (!value.trim() || busy) return;
+    if (!ready || busy) return;
     setBusy(true);
-    const ok = await onLink(value.trim());
+    setError(null);
+    const err = await onLink(value.trim());
     setBusy(false);
-    if (ok) {
-      setValue('');
-      setAdding(false);
-    }
+    if (err) {
+      setError(err);
+      input.current?.focus();
+    } else setValue('');
   }
 
   return (
     <section aria-label="Pull requests">
-      <SectionHeader
-        action={
-          !adding && (
-            <Button size="xs" variant="ghost" className="-mr-2 text-muted-foreground" onClick={() => setAdding(true)}>
-              <Plus className="size-3.5" /> Link PR
-            </Button>
-          )
-        }
-      >
+      <SectionHeader>
         <span className="inline-flex items-center gap-1.5">
           <GitPullRequest className="size-3.5" /> Pull requests
           {prs.length > 0 && <span className="tabular-nums">{prs.length}</span>}
         </span>
       </SectionHeader>
-      {adding && (
-        <form onSubmit={submit} className="mb-2 flex items-center gap-2">
-          <input
-            autoFocus
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.stopPropagation();
-                setValue('');
-                setAdding(false);
-              }
-            }}
-            placeholder="Paste a PR URL or number"
-            aria-label="Pull request URL or number"
-            disabled={busy}
-            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2.5 text-[13px] placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          />
-          <Button size="sm" type="submit" disabled={busy || !value.trim()}>
-            {busy && <Loader2 className="size-3.5 animate-spin" />} Link
-          </Button>
-          <Button size="sm" variant="ghost" type="button" disabled={busy} onClick={() => (setValue(''), setAdding(false))}>
-            Cancel
-          </Button>
-        </form>
+      <form onSubmit={submit} className="relative">
+        <Link2 className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+        <input
+          ref={input}
+          value={value}
+          onChange={(e) => (setValue(e.target.value), setError(null))}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && value) {
+              e.stopPropagation();
+              setValue('');
+              setError(null);
+            }
+          }}
+          placeholder={prs.length ? 'Paste another PR link and press Enter' : 'No linked PRs yet. Paste a PR link and press Enter'}
+          aria-label="Link a pull request by URL or number"
+          aria-invalid={!!error}
+          aria-describedby={error ? 'pr-link-error' : undefined}
+          readOnly={busy}
+          className={cn(
+            'h-8 w-full rounded-md border border-input bg-transparent pr-16 pl-8 text-[13px] transition-colors placeholder:text-muted-foreground hover:border-foreground/30 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none',
+            error && 'border-destructive/60 focus-visible:border-destructive focus-visible:ring-destructive/30',
+          )}
+        />
+        <span className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center text-xs text-muted-foreground">
+          {busy ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="size-3.5 animate-spin" /> Linking
+            </span>
+          ) : (
+            ready && <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px]">Enter ↵</kbd>
+          )}
+        </span>
+      </form>
+      {error && (
+        <p id="pr-link-error" role="alert" className="mt-1.5 text-xs text-destructive">
+          {error}
+        </p>
       )}
-      {prs.length > 0 ? (
-        <ul className="-mx-2 flex flex-col">
+      {prs.length > 0 && (
+        <ul className="-mx-2 mt-2 flex flex-col">
           {prs.map((pr) => (
             <PullRequestRow key={pr.artifact} pr={pr} who={who} onUnlink={() => onUnlink(pr)} />
           ))}
         </ul>
-      ) : (
-        !adding && <p className="text-[13px] text-muted-foreground">No linked pull requests.</p>
       )}
     </section>
   );
@@ -584,15 +589,15 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     }
   }
 
+  /** Returns null on success, or the error message to show next to the input. */
   async function linkPullRequest(ref) {
     try {
       const r = await api.linkPullRequest(detail.id, ref);
       setDetail((d) => ({ ...d, rev: r.rev, pullRequests: [r.pullRequest, ...d.pullRequests.filter((p) => p.artifact !== r.pullRequest.artifact)] }));
       toast.success(`PR ${r.pullRequest.id} linked to #${detail.id}`);
-      return true;
+      return null;
     } catch (e) {
-      toast.error(`#${detail.id}: PR not linked`, { description: e.message });
-      return false;
+      return e.message;
     }
   }
 
@@ -600,7 +605,11 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     try {
       const r = await api.unlinkPullRequest(detail.id, pr.artifact);
       setDetail((d) => ({ ...d, rev: r.rev, pullRequests: d.pullRequests.filter((p) => p.artifact !== pr.artifact) }));
-      toast.success(`PR ${pr.id} unlinked from #${detail.id}`, pr.url ? { action: { label: 'Undo', onClick: () => linkPullRequest(pr.url) } } : undefined);
+      const undo = async () => {
+        const err = await linkPullRequest(pr.url);
+        if (err) toast.error(`#${detail.id}: PR not relinked`, { description: err });
+      };
+      toast.success(`PR ${pr.id} unlinked from #${detail.id}`, pr.url ? { action: { label: 'Undo', onClick: undo } } : undefined);
     } catch (e) {
       toast.error(`#${detail.id}: PR not unlinked`, { description: e.message });
     }
