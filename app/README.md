@@ -5,21 +5,101 @@ React + Vite + shadcn/ui + Tailwind on the front. The Tauri 2 desktop app uses a
 
 ## Desktop (Windows and macOS)
 
-Development prerequisites: Node.js 22.12+ (or 24+), Rust via [rustup](https://rustup.rs/), and native build tools. On Windows, install Visual Studio Build Tools with **Desktop development with C++**, including an MSVC compiler and Windows SDK. On macOS, run `xcode-select --install`. Open a new terminal after installing Rust so `cargo` is on your PATH. End users need none of these tools: the Windows installer installs WebView2 if necessary, and macOS uses the built-in WKWebView.
+Download Windows installers from [GitHub Releases](https://github.com/raulpo_microsoft/tickets/releases). Choose the Windows x64 `.exe` asset, not the source-code ZIP. Installers are currently unsigned; obtain them only from this repository's releases. End users do not need Node.js, Rust, build tools, or Azure CLI: WebView2 is installed automatically if necessary, and device-code sign-in works without Azure CLI.
+
+### Build prerequisites
+
+Install Node.js 22.12+ (or 24+) and the current stable Rust toolchain using [rustup](https://rustup.rs/).
+
+On **Windows**, install Visual Studio 2022 Build Tools and select **Desktop development with C++**, including the MSVC x64/x86 compiler and a Windows SDK. WebView2 Runtime must also be installed to run the app during development.
+
+On **macOS**, install Xcode command-line tools:
+
+```sh
+xcode-select --install
+```
+
+Open a new terminal after installing Rust so `cargo` is on your PATH. Check that `node --version`, `npm --version`, `rustc --version`, and `cargo --version` work before building.
+
+### Build and run locally
+
+Clone this repository, then run these commands from its root on either OS:
 
 ```powershell
 cd app
 npm ci
-npm run desktop:dev     # Vite + the native app; no Express server
 npm run desktop:test    # Rust tests
 npm run desktop:build   # native release build + installer
 ```
 
-Windows installers are in `src-tauri\target\release\bundle\nsis`; macOS produces an `.app` and `.dmg` in the corresponding `bundle` directories. Build each platform on its own OS. For Intel macOS cross-builds on Apple Silicon, install the target with `rustup target add x86_64-apple-darwin` and run `npm run desktop:build -- --target x86_64-apple-darwin`. The manual **Desktop build** GitHub Actions workflow builds Windows, Apple Silicon macOS, and Intel macOS installers, and uploads them as artifacts without publishing a release.
+The first native build downloads Rust dependencies and can take several minutes. The optimized release build embeds the frontend into the executable; it does not require a running Vite or Express server.
+
+For live development, run `npm run desktop:dev` from `app`. It starts Vite and the native window together, without Express. Exit the command to stop development. Use `npm run dev` only for the browser version.
+
+**Windows x64 output**, relative to `app`:
+
+```text
+src-tauri\target\release\tickets-planner.exe
+src-tauri\target\release\bundle\nsis\Tickets planner_<version>_x64-setup.exe
+```
+
+Run the setup executable to install the app. The first executable can also run directly without installation.
+
+**macOS output**, relative to `app`:
+
+```text
+src-tauri/target/release/bundle/macos/Tickets planner.app
+src-tauri/target/release/bundle/dmg/*.dmg
+```
+
+The default build uses the Mac's own architecture. To explicitly build **Apple Silicon** or **Intel**, run the matching pair from `app` on a Mac:
+
+```sh
+# Apple Silicon
+rustup target add aarch64-apple-darwin
+npm run desktop:build -- --target aarch64-apple-darwin
+
+# Intel
+rustup target add x86_64-apple-darwin
+npm run desktop:build -- --target x86_64-apple-darwin
+```
+
+With an explicit target, output moves to `src-tauri/target/<target>/release/bundle/`. The `.dmg` contains the app to copy into Applications. Build macOS packages on macOS; the Windows build cannot produce a macOS installer. Mac installers have not yet been built or verified for this release.
 
 These development installers are unsigned. Public distribution requires a Windows code-signing certificate and an Apple Developer ID plus notarization credentials; configure those through Tauri's signing environment variables, never in the repository. Automatic updates are not enabled.
 
 The native backend honors the same `ADO_ORG`, `ADO_PROJECT`, `ADO_TEAM_ID`, `ADO_SPRINT_ROOT`, and `AZURE_TENANT_ID` environment variables as the web backend. All Azure DevOps reads and writes go through Rust. External links open in the default browser; ticket references copy both HTML and plain text through the native clipboard. Authenticated attachment images are loaded through IPC, with original URLs restored before saving edited content.
+
+### Publish binaries manually
+
+GitHub-hosted runners are disabled for this repository, so releases are currently built locally and uploaded manually. The **Desktop build** workflow is available for Windows and both Mac architectures if an administrator enables hosted runners later; it uploads build artifacts but does not publish a release.
+
+1. For a new version, keep `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json` aligned. `npm version <version> --no-git-tag-version` updates the npm manifests; update the Rust package and Tauri versions, then run `cargo check --manifest-path src-tauri/Cargo.toml` to refresh the Rust lockfile. Commit and push the source changes.
+2. From that clean source revision, run `npm ci`, `npm run desktop:test`, and `npm run desktop:build` on the target OS. Open the built app and confirm that sign-in, the sprint board, and ticket details load without modifying real work items.
+3. In [GitHub Releases](https://github.com/raulpo_microsoft/tickets/releases), create a draft release with tag `v<version>` targeting the exact source commit used for the build. Upload the Windows setup `.exe` from the `nsis` directory; upload Mac `.dmg` files only after building and checking them on macOS. Do not commit binaries or `target` directories to Git.
+4. Include the source commit, supported architecture, signing status, and installer SHA-256 in the release notes. Check that each uploaded file matches the local build before publishing the draft. Publish it as the latest release when it is ready; no workflow or automatic updater is required.
+
+Compute the Windows checksum in PowerShell from `app`:
+
+```powershell
+$version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+$installer = ".\src-tauri\target\release\bundle\nsis\Tickets planner_${version}_x64-setup.exe"
+Get-FileHash -Algorithm SHA256 -LiteralPath $installer
+```
+
+On macOS, use `shasum -a 256` with the path to the built `.dmg`.
+
+Alternatively, upload the Windows installer with the GitHub CLI after signing in to **github.com** with access to this repository. From `app`, with the PowerShell variables above:
+
+```powershell
+$tag = "v$version"
+$commit = git rev-parse HEAD
+gh release create $tag "$installer#Windows x64 installer" --repo https://github.com/raulpo_microsoft/tickets --target $commit --title "Tickets planner $version" --draft --notes "Windows x64. Unsigned local build. Source: $commit"
+# Add the checksum to the draft notes and verify the uploaded asset before publishing.
+gh release edit $tag --repo https://github.com/raulpo_microsoft/tickets --draft=false --latest
+```
+
+If the release already exists, use `gh release upload $tag "$installer" --repo https://github.com/raulpo_microsoft/tickets` instead of creating it again. Do not overwrite an existing published asset with a different build under the same version.
 
 ## Run
 
