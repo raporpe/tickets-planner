@@ -5,6 +5,9 @@ import { Bold, Code, Italic, Link2, List, ListOrdered, Loader2 } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { api } from '@/api';
+import { isDesktop } from '@/lib/desktop';
+import { toast } from 'sonner';
 
 const PROXY = '/api/attachment?url=';
 
@@ -17,18 +20,54 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 
 const sanitize = (html) => DOMPurify.sanitize(html || '', { USE_PROFILES: { html: true }, FORBID_TAGS: ['style', 'form', 'input', 'button'] });
 
-// ADO attachment images need auth, so route them through the local server for display…
+// Native images use authenticated IPC; the browser keeps its existing proxy.
 export function toDisplay(html, markdown = false) {
   const source = markdown ? marked.parse(html || '', { gfm: true, breaks: true }) : html;
   return sanitize(source).replace(
     /(<img\b[^>]*?\ssrc=")(https:\/\/[^"]+\/_apis\/wit\/attachments\/[^"]+)"/gi,
-    (_, pre, url) => `${pre}${PROXY}${encodeURIComponent(url.replace(/&amp;/g, '&'))}"`,
+    (_, pre, url) => {
+      const encoded = encodeURIComponent(url.replace(/&amp;/g, '&'));
+      return isDesktop ? `${pre}" data-ado-attachment="${encoded}"` : `${pre}${PROXY}${encoded}"`;
+    },
   );
 }
 
-// …and restore the original URLs before saving back to ADO.
+function loadNativeImages(element) {
+  let disposed = false;
+  const urls = [];
+  for (const image of element?.querySelectorAll('img[data-ado-attachment]') || []) {
+    const url = decodeURIComponent(image.dataset.adoAttachment);
+    api.attachment(url).then(({ mime, data }) => {
+      if (disposed) return;
+      const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      urls.push(objectUrl);
+      image.src = objectUrl;
+    }).catch((error) => {
+      if (disposed) return;
+      image.alt = 'Could not load this Azure DevOps image';
+      toast.error(`Could not load an attachment: ${error.error || error.message || error}`);
+    });
+  }
+  return () => {
+    disposed = true;
+    urls.forEach((url) => URL.revokeObjectURL(url));
+  };
+}
+
+// Restore original attachment URLs, never saving transient blob URLs to ADO.
 export function toStorage(html) {
-  return sanitize(html)
+  let source = html;
+  if (isDesktop) {
+    const element = document.createElement('div');
+    element.innerHTML = sanitize(html);
+    for (const image of element.querySelectorAll('img[data-ado-attachment]')) {
+      image.setAttribute('src', decodeURIComponent(image.dataset.adoAttachment));
+      image.removeAttribute('data-ado-attachment');
+    }
+    source = element.innerHTML;
+  }
+  return sanitize(source)
     .replace(/(<img\b[^>]*?\ssrc=")\/api\/attachment\?url=([^"]+)"/gi, (_, pre, enc) => `${pre}${decodeURIComponent(enc.replace(/&amp;/g, '&'))}"`)
     .trim();
 }
@@ -36,8 +75,12 @@ export function toStorage(html) {
 export const isBlank = (html, markdown = false) => (markdown ? !html?.trim() : !html || !sanitize(html).replace(/<(?!img)[^>]+>|&nbsp;|\s/g, ''));
 
 export function RichView({ html, markdown = false, className, empty = 'Nothing here yet.' }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (isDesktop) return loadNativeImages(ref.current);
+  }, [html, markdown]);
   if (isBlank(html, markdown)) return <p className={cn('text-[13px] text-muted-foreground italic', className)}>{empty}</p>;
-  return <div className={cn('rich', className)} dangerouslySetInnerHTML={{ __html: toDisplay(html, markdown) }} />;
+  return <div ref={ref} className={cn('rich', className)} dangerouslySetInnerHTML={{ __html: toDisplay(html, markdown) }} />;
 }
 
 const TOOLS = [
@@ -143,6 +186,7 @@ function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save',
       window.getSelection()?.removeAllRanges();
       window.getSelection()?.addRange(range);
     }
+    if (isDesktop) return loadNativeImages(ref.current);
   }, [initialHtml, autoFocus]);
 
   const save = () => !saving && onSave(toStorage(ref.current.innerHTML), () => ref.current && (ref.current.innerHTML = ''));

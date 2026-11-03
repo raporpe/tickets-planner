@@ -3,6 +3,7 @@ import { Copy, KeyRound, Loader2, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { api } from '@/api';
+import { writeClipboard } from '@/lib/desktop';
 
 export function SignIn({ status, onSignedIn }) {
   const [busy, setBusy] = useState(null);
@@ -33,8 +34,15 @@ export function SignIn({ status, onSignedIn }) {
       setDevice(d);
       clearInterval(timer.current);
       timer.current = setInterval(async () => {
-        const s = await api.pollDevice().catch(() => null);
-        if (!s) return;
+        let s;
+        try {
+          s = await api.pollDevice();
+        } catch (e) {
+          clearInterval(timer.current);
+          setError(e.message);
+          setBusy(null);
+          return;
+        }
         setDevice(s);
         if (s.status === 'done') {
           clearInterval(timer.current);
@@ -57,7 +65,7 @@ export function SignIn({ status, onSignedIn }) {
         <h1 className="text-xl font-semibold tracking-tight">Tickets planner</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Sign in to <span className="text-foreground">{status?.org?.replace('https://', '') || 'Azure DevOps'}</span>. Tokens stay in the
-          local server process; nothing is stored on disk.
+          app process; nothing is stored on disk.
         </p>
 
         <div className="mt-6 grid gap-2">
@@ -82,7 +90,9 @@ export function SignIn({ status, onSignedIn }) {
             </p>
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-muted px-3 py-1.5 font-mono text-lg tracking-[0.2em]">{device.userCode}</code>
-              <Button size="icon-sm" variant="ghost" aria-label="Copy code" onClick={() => navigator.clipboard.writeText(device.userCode)}>
+              <Button size="icon-sm" variant="ghost" aria-label="Copy code" onClick={() => writeClipboard(device.userCode).catch(
+                (e) => setError(`Could not copy the code: ${e.message || e}`),
+              )}>
                 <Copy />
               </Button>
             </div>

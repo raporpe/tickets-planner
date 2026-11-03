@@ -21,6 +21,7 @@ import { copyItem } from '@/lib/copy-item';
 import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@/lib/shortcuts';
 import { ShortcutsHelp } from '@/components/shortcuts-help';
 import { setTheme, useTheme } from '@/lib/theme';
+import { openExternal } from '@/lib/desktop';
 
 function ThemeToggle() {
   const dark = useTheme() === 'dark';
@@ -189,7 +190,9 @@ export default function App() {
     const d = dataRef.current;
     if (action === 'copy' || action === 'open-ado') {
       const item = d?.items.find((i) => i.id === id) || d?.features.find((f) => f.id === id);
-      if (action === 'open-ado') return window.open(item?.url || `https://msasg.visualstudio.com/SAN%20SA/_workitems/edit/${id}`, '_blank', 'noreferrer');
+      if (action === 'open-ado') return openExternal(item?.url || `https://msasg.visualstudio.com/SAN%20SA/_workitems/edit/${id}`).catch(
+        (error) => toast.error(`Could not open Azure DevOps: ${error.message || error}`),
+      );
       if (!item) return toast.message(`#${id} isn't loaded in the planner`);
       return copyItem(item).then(
         () => toast.success(`Copied #${item.id}`),
@@ -448,4 +451,3 @@ export default function App() {
     </DetailContext.Provider>
   );
 }
-

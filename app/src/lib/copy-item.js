@@ -15,14 +15,6 @@ export async function copyItem(item) {
   const title = shortTitle(item.title);
   const html = `<a href="${escape(item.url)}">#${item.id}</a> ${escape(title)} [${escape(item.state)}]`;
   const text = `[#${item.id}](${item.url}) ${title} [${item.state}]`;
-  if (window.ClipboardItem && navigator.clipboard?.write) {
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        'text/html': new Blob([html], { type: 'text/html' }),
-        'text/plain': new Blob([text], { type: 'text/plain' }),
-      }),
-    ]);
-  } else {
-    await navigator.clipboard.writeText(text);
-  }
+  await writeClipboard(text, html);
 }
+import { writeClipboard } from '@/lib/desktop';

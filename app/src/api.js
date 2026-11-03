@@ -1,4 +1,16 @@
+import { invoke } from '@tauri-apps/api/core';
+import { isDesktop } from '@/lib/desktop';
+
 async function request(method, url, body) {
+  if (isDesktop) {
+    try {
+      return await invoke('planner_request', { method, url, body: body ?? null });
+    } catch (error) {
+      const err = new Error(error?.error || String(error));
+      err.status = error?.status || 500;
+      throw err;
+    }
+  }
   const res = await fetch(`/api${url}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
@@ -14,6 +26,7 @@ async function request(method, url, body) {
 }
 
 export const api = {
+  attachment: (url) => invoke('planner_attachment', { url }),
   status: () => request('GET', '/auth/status'),
   signInCli: () => request('POST', '/auth/cli'),
   startDevice: () => request('POST', '/auth/device'),

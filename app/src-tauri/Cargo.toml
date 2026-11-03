@@ -1,0 +1,35 @@
+[package]
+name = "tickets-planner"
+version = "0.1.0"
+description = "Native Azure DevOps sprint planner"
+edition = "2021"
+rust-version = "1.80"
+
+[lib]
+name = "tickets_planner_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-clipboard-manager = "2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "time"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+regex = "1"
+url = "2"
+base64 = "0.22"
+
+[dev-dependencies]
+wiremock = "0.6"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

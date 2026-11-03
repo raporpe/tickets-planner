@@ -1,7 +1,25 @@
 # Tickets planner
 
-Local web UI for planning sprints over my Azure DevOps work items (`msasg` / `SAN SA`, Bing Mobile Apps Team).
-React + Vite + shadcn/ui + Tailwind on the front, a small Express proxy on the back.
+Desktop and web UI for planning sprints over my Azure DevOps work items (`msasg` / `SAN SA`, Bing Mobile Apps Team).
+React + Vite + shadcn/ui + Tailwind on the front. The Tauri 2 desktop app uses a native Rust backend via IPC: no Node runtime, Express process, or localhost server ships with it. The browser version retains its Express backend.
+
+## Desktop (Windows and macOS)
+
+Development prerequisites: Node.js 22.12+ (or 24+), Rust via [rustup](https://rustup.rs/), and native build tools. On Windows, install Visual Studio Build Tools with **Desktop development with C++**, including an MSVC compiler and Windows SDK. On macOS, run `xcode-select --install`. Open a new terminal after installing Rust so `cargo` is on your PATH. End users need none of these tools: the Windows installer installs WebView2 if necessary, and macOS uses the built-in WKWebView.
+
+```powershell
+cd app
+npm ci
+npm run desktop:dev     # Vite + the native app; no Express server
+npm run desktop:test    # Rust tests
+npm run desktop:build   # native release build + installer
+```
+
+Windows installers are in `src-tauri\target\release\bundle\nsis`; macOS produces an `.app` and `.dmg` in the corresponding `bundle` directories. Build each platform on its own OS. For Intel macOS cross-builds on Apple Silicon, install the target with `rustup target add x86_64-apple-darwin` and run `npm run desktop:build -- --target x86_64-apple-darwin`. The manual **Desktop build** GitHub Actions workflow builds Windows, Apple Silicon macOS, and Intel macOS installers, and uploads them as artifacts without publishing a release.
+
+These development installers are unsigned. Public distribution requires a Windows code-signing certificate and an Apple Developer ID plus notarization credentials; configure those through Tauri's signing environment variables, never in the repository. Automatic updates are not enabled.
+
+The native backend honors the same `ADO_ORG`, `ADO_PROJECT`, `ADO_TEAM_ID`, `ADO_SPRINT_ROOT`, and `AZURE_TENANT_ID` environment variables as the web backend. All Azure DevOps reads and writes go through Rust. External links open in the default browser; ticket references copy both HTML and plain text through the native clipboard. Authenticated attachment images are loaded through IPC, with original URLs restored before saving edited content.
 
 ## Run
 
@@ -20,7 +38,7 @@ npm run dev        # Vite on http://127.0.0.1:5173 (proxies /api to the server)
   Uses the Azure CLI public client, so no Entra app registration is needed.
   Set `AZURE_TENANT_ID` to force a tenant (defaults to `organizations`).
 
-Tokens stay in the server process memory. No ticket data is stored locally; Azure DevOps is the only source of truth.
+Tokens, including device-code refresh tokens in the desktop app, stay in process memory only and disappear when the app exits. No ticket data is stored locally; Azure DevOps is the only source of truth. Device-code sign-in works without Azure CLI installed.
 
 ## Views
 
