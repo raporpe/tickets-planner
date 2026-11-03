@@ -7,6 +7,22 @@ React + Vite + shadcn/ui + Tailwind on the front. The Tauri 2 desktop app uses a
 
 Download Windows installers from [GitHub Releases](https://github.com/raulpo_microsoft/tickets/releases). Choose the Windows x64 `.exe` asset, not the source-code ZIP. Installers are currently unsigned; obtain them only from this repository's releases. End users do not need Node.js, Rust, build tools, or Azure CLI: WebView2 is installed automatically if necessary, and device-code sign-in works without Azure CLI.
 
+Build guides: [Windows 10/11](#windows-1011-x64-and-arm64) · [macOS 11 and later](#macos-11-intel-apple-silicon-and-universal) · [Manual publishing](#publish-binaries-manually).
+
+### OS versions and build targets
+
+| Operating system | Architecture | Build target | Status |
+| --- | --- | --- | --- |
+| Windows 10 or 11 | Intel/AMD 64-bit | `x86_64-pc-windows-msvc` | Installer built and run on Windows 11; not separately tested on Windows 10 |
+| Windows 10 or 11 on ARM | ARM64 | `aarch64-pc-windows-msvc` | Build recipe below; not built or verified |
+| macOS 11 Big Sur or later | Intel | `x86_64-apple-darwin` | Configured; not built or verified |
+| macOS 11 Big Sur or later | Apple Silicon | `aarch64-apple-darwin` | Configured; not built or verified |
+| macOS 11 Big Sur or later | Intel + Apple Silicon | `universal-apple-darwin` | Optional combined build; not built or verified |
+
+You do not need a different installer for every Windows or macOS release. Choose the CPU architecture; Windows 10 and 11 use the same target, and the macOS deployment minimum is `11.0` in `src-tauri/tauri.conf.json`. Keep OS and browser-engine updates current; the macOS UI needs a modern system WebKit (Safari 16.4 or newer for Tailwind CSS 4). The configured minimum is not a claim that every macOS version has been tested.
+
+Windows 7/8/8.1, macOS older than 11, Windows 32-bit, and Linux are not supported release targets for this app.
+
 ### Build prerequisites
 
 Install Node.js 22.12+ (or 24+) and the current stable Rust toolchain using [rustup](https://rustup.rs/).
@@ -36,7 +52,18 @@ The first native build downloads Rust dependencies and can take several minutes.
 
 For live development, run `npm run desktop:dev` from `app`. It starts Vite and the native window together, without Express. Exit the command to stop development. Use `npm run dev` only for the browser version.
 
-**Windows x64 output**, relative to `app`:
+### Windows 10/11: x64 and ARM64
+
+Run these commands in PowerShell from `app`, after installing the prerequisites above. The x64 recipe is the normal build for Intel/AMD PCs on either Windows 10 or Windows 11:
+
+```powershell
+rustup target add x86_64-pc-windows-msvc
+npm ci
+npm run desktop:test
+npm run desktop:build -- --target x86_64-pc-windows-msvc
+```
+
+Explicit-target output is in `src-tauri\target\x86_64-pc-windows-msvc\release\bundle\nsis`. If you instead run `npm run desktop:build` on an x64 PC, the default output is:
 
 ```text
 src-tauri\target\release\tickets-planner.exe
@@ -45,14 +72,26 @@ src-tauri\target\release\bundle\nsis\Tickets planner_<version>_x64-setup.exe
 
 Run the setup executable to install the app. The first executable can also run directly without installation.
 
-**macOS output**, relative to `app`:
+For Windows on ARM, also install the **MSVC ARM64 build tools** in Visual Studio Build Tools. You can build this target on a Windows x64 or ARM64 build machine:
 
-```text
-src-tauri/target/release/bundle/macos/Tickets planner.app
-src-tauri/target/release/bundle/dmg/*.dmg
+```powershell
+rustup target add aarch64-pc-windows-msvc
+npm ci
+npm run desktop:build -- --target aarch64-pc-windows-msvc
 ```
 
-The default build uses the Mac's own architecture. To explicitly build **Apple Silicon** or **Intel**, run the matching pair from `app` on a Mac:
+Find the ARM64 installer in `src-tauri\target\aarch64-pc-windows-msvc\release\bundle\nsis`. Check it on an actual Windows ARM64 device before distributing it; an x64 test run does not verify ARM64 behavior.
+
+### macOS 11+: Intel, Apple Silicon, and universal
+
+Run these commands in Terminal on a Mac, from `app`, after installing Node.js, stable Rust, and Xcode command-line tools:
+
+```sh
+npm ci
+npm run desktop:test
+```
+
+The default `npm run desktop:build` uses the Mac's own architecture. To choose an architecture explicitly, run one of these pairs:
 
 ```sh
 # Apple Silicon
@@ -64,7 +103,23 @@ rustup target add x86_64-apple-darwin
 npm run desktop:build -- --target x86_64-apple-darwin
 ```
 
-With an explicit target, output moves to `src-tauri/target/<target>/release/bundle/`. The `.dmg` contains the app to copy into Applications. Build macOS packages on macOS; the Windows build cannot produce a macOS installer. Mac installers have not yet been built or verified for this release.
+For one app containing both Intel and Apple Silicon executables, install both Rust targets and let Tauri combine them:
+
+```sh
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+npm run desktop:build -- --target universal-apple-darwin
+```
+
+`universal-apple-darwin` is a Tauri build target, not a Rust toolchain target: do not pass it to `rustup target add`.
+
+Without `--target`, macOS output is:
+
+```text
+src-tauri/target/release/bundle/macos/Tickets planner.app
+src-tauri/target/release/bundle/dmg/*.dmg
+```
+
+With an explicit target, output moves to `src-tauri/target/<target>/release/bundle/`, including `universal-apple-darwin` for the combined build. The `.dmg` contains the app to copy into Applications. Build macOS packages on macOS; the Windows build cannot produce a macOS installer. Check each architecture on a matching Mac before distributing it. Mac installers have not yet been built or verified for this release.
 
 These development installers are unsigned. Public distribution requires a Windows code-signing certificate and an Apple Developer ID plus notarization credentials; configure those through Tauri's signing environment variables, never in the repository. Automatic updates are not enabled.
 
