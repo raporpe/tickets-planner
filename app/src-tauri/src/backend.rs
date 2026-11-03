@@ -206,14 +206,16 @@ impl Backend {
             .bearer_auth(token)
             .header("Accept", "application/json");
         if let Some(body) = body {
-            request = request.json(&body).header(
-                "Content-Type",
-                if patch {
-                    "application/json-patch+json"
-                } else {
-                    "application/json"
-                },
-            );
+            request = request
+                .header(
+                    "Content-Type",
+                    if patch {
+                        "application/json-patch+json"
+                    } else {
+                        "application/json"
+                    },
+                )
+                .json(&body);
         }
         let response = request.send().await?;
         let status = response.status().as_u16();
@@ -1036,8 +1038,16 @@ mod tests {
             .await;
         let result=mocked(&server).request("PATCH","/workitems/10",json!({
             "rev":3,"fields":{"System.Description":"# Updated"},"markdown":["System.Description"]
-        })).await.unwrap();
+        })).await        .unwrap();
         assert_eq!(result["rev"], 4);
+        let requests = server.received_requests().await.unwrap();
+        let content_types: Vec<_> = requests[0].headers.get_all("content-type").iter().collect();
+        assert_eq!(
+            content_types.len(),
+            1,
+            "PATCH must send exactly one Content-Type header"
+        );
+        assert_eq!(content_types[0], "application/json-patch+json");
     }
     #[tokio::test]
     async fn revision_conflicts_and_non_sprintable_items_are_rejected() {
@@ -1074,6 +1084,53 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.status, 400);
         assert!(error.error.contains("only Tasks and Bugs"));
+    }
+    #[tokio::test]
+    async fn moving_between_sprints_sends_one_patch_content_type() {
+        let server = MockServer::start().await;
+        respond(
+            &server,
+            "GET",
+            "/_apis/wit/workitems/10",
+            json!({
+                "id":10,"fields":{"System.WorkItemType":"Task"}
+            }),
+        )
+        .await;
+        Mock::given(method("PATCH"))
+            .and(path("/_apis/wit/workitems/10"))
+            .and(body_json(json!([{
+                "op":"add","path":"/fields/System.IterationPath",
+                "value":"Test Project\\Sprint\\next"
+            }])))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id":10,"rev":4,"fields":{
+                    "System.Title":"Synthetic task","System.State":"Active",
+                    "System.IterationPath":"Test Project\\Sprint\\next"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let result = mocked(&server)
+            .request(
+                "PATCH",
+                "/workitems/10",
+                json!({
+                    "iterationPath":"Test Project\\Sprint\\next"
+                }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result["iterationPath"], "Test Project\\Sprint\\next");
+        let requests = server.received_requests().await.unwrap();
+        let patch = requests
+            .iter()
+            .find(|request| request.method.as_str() == "PATCH")
+            .unwrap();
+        let content_types: Vec<_> = patch.headers.get_all("content-type").iter().collect();
+        assert_eq!(content_types.len(), 1);
+        assert_eq!(content_types[0], "application/json-patch+json");
     }
     #[tokio::test]
     async fn attachment_origin_is_checked_and_unknown_routes_fail() {

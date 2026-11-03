@@ -156,6 +156,10 @@ gh release edit $tag --repo https://github.com/raulpo_microsoft/tickets --draft=
 
 If the release already exists, use `gh release upload $tag "$installer" --repo https://github.com/raulpo_microsoft/tickets` instead of creating it again. Do not overwrite an existing published asset with a different build under the same version.
 
+### Troubleshooting ticket updates
+
+Desktop version `0.1.0` can fail when moving a ticket between sprints or making other ticket/Feature updates with **400 Bad Request - Invalid Header**. Its native HTTP client sends duplicate `Content-Type` headers on JSON Patch requests. Install version `0.1.1` or later from [GitHub Releases](https://github.com/raulpo_microsoft/tickets/releases); changing the sign-in method does not fix this request-formatting bug.
+
 ## Run
 
 ```powershell
