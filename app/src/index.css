@@ -220,3 +220,51 @@
 @utility animate-card-settle {
   animation: card-settle 380ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
+
+@keyframes hygiene-badge {
+  from {
+    transform: scale(0.72);
+    opacity: 0;
+  }
+  65% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes hygiene-ring {
+  from {
+    transform: scale(0.8);
+    opacity: 0.65;
+  }
+  to {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+@keyframes hygiene-stroke {
+  from {
+    stroke-dashoffset: 28;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@utility animate-hygiene-badge {
+  animation: hygiene-badge 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility animate-hygiene-ring {
+  animation: hygiene-ring 900ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+}
+
+@utility animate-hygiene-stroke {
+  stroke-dasharray: 28;
+  animation: hygiene-stroke 420ms cubic-bezier(0.22, 1, 0.36, 1) 160ms both;
+}
