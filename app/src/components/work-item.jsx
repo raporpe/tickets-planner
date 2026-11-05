@@ -4,9 +4,54 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { canBeInSprint, columnRank, isDone, isSprintUnplanned, stateTone, typeShort, typeStyle } from '@/lib/planning';
+import { canBeInSprint, columnRank, isDone, isSprintUnplanned, PRIORITIES, priorityTone, stateTone, typeShort, typeStyle } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 import { useShortcutOpen } from '@/lib/shortcuts';
+
+export function PriorityPill({ priority, compact = false, className }) {
+  if (priority == null) return null;
+  return (
+    <span
+      title={`Priority ${priority}`}
+      className={cn(
+        'inline-flex items-center rounded-full font-medium ring-1 ring-inset tabular-nums',
+        compact ? 'px-1.5 text-[10px]' : 'h-5 px-2 text-[11px]',
+        priorityTone(priority),
+        className,
+      )}
+    >
+      P{priority}
+    </span>
+  );
+}
+
+export function PrioritySelect({ priority, onChange, disabled }) {
+  const val = priority != null ? String(priority) : '';
+  return (
+    <Select value={val} onValueChange={(v) => Number(v) !== priority && onChange(Number(v))} disabled={disabled}>
+      <SelectTrigger
+        title="Change priority"
+        size="sm"
+        aria-label="Priority"
+        className="h-6! gap-1 border-0 bg-transparent p-0 pr-1 shadow-none hover:bg-accent focus-visible:ring-2 [&>svg]:size-3"
+      >
+        <SelectValue placeholder={<span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}>
+          {priority != null ? <PriorityPill priority={priority} /> : <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper">
+        {PRIORITIES.map((p) => (
+          <SelectItem key={p.value} value={String(p.value)}>
+            <span className="flex items-center gap-2">
+              <PriorityPill priority={p.value} />
+              <span className="text-xs text-muted-foreground">{p.hint}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export function StatePill({ state, className }) {
   return (
@@ -195,14 +240,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
             <TooltipContent>Brought into the sprint unplanned (Sprint-Unplanned)</TooltipContent>
           </Tooltip>
         )}
-        {item.weeksCarried >= 4 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border ring-inset tabular-nums">{item.weeksCarried}w</span>
-            </TooltipTrigger>
-            <TooltipContent>Carried across {item.weeksCarried} weekly tags</TooltipContent>
-          </Tooltip>
-        )}
+        <PriorityPill priority={item.priority} compact />
         <div className="ml-auto">
           <StateSelect item={item} states={data.states[item.type]} onChange={(p) => onUpdate(item, p)} disabled={pending} />
         </div>

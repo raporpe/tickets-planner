@@ -40,6 +40,7 @@ function ThemeToggle() {
 
 function describe(patch, data, features) {
   if (patch.state) return `state → ${patch.state}`;
+  if (patch.priority != null) return `priority → P${patch.priority}`;
   if (patch.iterationPath) {
     const s = data.sprints.find((x) => x.path === patch.iterationPath);
     return `moved to ${s ? s.name : 'Backlog'}`;
@@ -449,7 +450,7 @@ export default function App() {
           clearDetailCache();
           await load();
         }
-        else setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, state: r.state, iterationPath: r.iterationPath } : i)) }));
+        else setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, state: r.state, priority: r.priority ?? i.priority, iterationPath: r.iterationPath } : i)) }));
       } catch (e) {
         setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? previous : i)) }));
         toast.error(`#${item.id}: could not save (${label})`, { description: e.message });

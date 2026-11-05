@@ -334,6 +334,7 @@ async function buildOverview() {
         type: f['System.WorkItemType'],
         title: f['System.Title'],
         state: f['System.State'],
+        priority: f['Microsoft.VSTS.Common.Priority'] ?? null,
         iterationPath: f['System.IterationPath'],
         tags,
         weeksCarried: tags.filter((t) => /^\d{8}$/.test(t)).length,
@@ -482,6 +483,11 @@ app.patch('/api/workitems/:id', route(async (req) => {
     ops.push({ op: 'add', path: '/fields/System.IterationPath', value: b.iterationPath });
   }
   if (b.state) ops.push({ op: 'add', path: '/fields/System.State', value: b.state });
+  if (b.priority != null) {
+    const p = Number(b.priority);
+    if (![1, 2, 3, 4].includes(p)) throw Object.assign(new Error('Priority must be between 1 and 4'), { status: 400 });
+    ops.push({ op: 'add', path: '/fields/Microsoft.VSTS.Common.Priority', value: p });
+  }
   if (Array.isArray(b.tags)) {
     const seen = new Set();
     const cleaned = [];
@@ -522,6 +528,7 @@ app.patch('/api/workitems/:id', route(async (req) => {
     rev: wi.rev,
     title: wi.fields['System.Title'],
     state: wi.fields['System.State'],
+    priority: wi.fields['Microsoft.VSTS.Common.Priority'] ?? null,
     iterationPath: wi.fields['System.IterationPath'],
     tags: (wi.fields['System.Tags'] || '').split(';').map((t) => t.trim()).filter(Boolean),
   };
