@@ -44,7 +44,7 @@ const HYGIENE_CHECKS = [
 
 function HygieneAllClear({ openCount }) {
   return (
-    <section aria-label="All hygiene checks passing" className="mx-auto flex w-full max-w-2xl flex-col items-center pt-6 pb-2">
+    <section aria-label="All hygiene checks passing" className="mx-auto my-auto flex w-full max-w-2xl flex-col items-center py-6">
       <div className="relative flex size-14 items-center justify-center">
         <span
           aria-hidden
@@ -140,7 +140,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
   const openCount = items.filter((i) => !isDone(i)).length;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-8">
+    <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-4 pb-4">
       {clean && <HygieneAllClear openCount={openCount} />}
       {sprintFeatures.length > 0 && (
         <section>
@@ -187,17 +187,21 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
           </div>
         </section>
       ))}
-      {infoSections.map((s) => (
-        <CollapsibleInfoSection
-          key={s.title}
-          section={s}
-          data={data}
-          features={features}
-          pendingIds={pendingIds}
-          reasonsById={reasonsById}
-          onUpdate={onUpdate}
-        />
-      ))}
+      {infoSections.length > 0 && (
+        <div className="mt-auto flex flex-col gap-3 pt-2">
+          {infoSections.map((s) => (
+            <CollapsibleInfoSection
+              key={s.title}
+              section={s}
+              data={data}
+              features={features}
+              pendingIds={pendingIds}
+              reasonsById={reasonsById}
+              onUpdate={onUpdate}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
