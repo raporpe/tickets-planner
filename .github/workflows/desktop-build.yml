@@ -21,12 +21,9 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             platform: windows-x86_64
-          - os: macos-13
+          - os: macos-15-intel
             target: aarch64-apple-darwin
             platform: darwin-aarch64
-          - os: macos-13
-            target: x86_64-apple-darwin
-            platform: darwin-x86_64
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -66,10 +63,6 @@ jobs:
             cp "$BUNDLE/dmg/"*.dmg "$OUT/Tickets.planner_${VER}_aarch64.dmg"
             cp "$BUNDLE/macos/"*.app.tar.gz "$OUT/Tickets.planner_${VER}_aarch64.app.tar.gz"
             cp "$BUNDLE/macos/"*.app.tar.gz.sig "$OUT/Tickets.planner_${VER}_aarch64.app.tar.gz.sig"
-          elif [ "${{ matrix.platform }}" = "darwin-x86_64" ]; then
-            cp "$BUNDLE/dmg/"*.dmg "$OUT/Tickets.planner_${VER}_x64.dmg"
-            cp "$BUNDLE/macos/"*.app.tar.gz "$OUT/Tickets.planner_${VER}_x64.app.tar.gz"
-            cp "$BUNDLE/macos/"*.app.tar.gz.sig "$OUT/Tickets.planner_${VER}_x64.app.tar.gz.sig"
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -96,11 +89,10 @@ jobs:
           BASE="https://stticketsplanner9284.blob.core.windows.net/releases/${TAG}"
           WIN_SIG=$(cat "artifacts/Tickets.planner_${VER}_x64-setup.exe.sig")
           ARM_SIG=$(cat "artifacts/Tickets.planner_${VER}_aarch64.app.tar.gz.sig")
-          X64_SIG=$(cat "artifacts/Tickets.planner_${VER}_x64.app.tar.gz.sig")
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           node -e '
             const fs = require("node:fs");
-            const [ver, base, pubDate, winSig, armSig, x64Sig] = process.argv.slice(1);
+            const [ver, base, pubDate, winSig, armSig] = process.argv.slice(1);
             const manifest = {
               version: ver,
               notes: `Tickets planner v${ver}`,
@@ -113,20 +105,16 @@ jobs:
                 "darwin-aarch64": {
                   signature: armSig.trim(),
                   url: `${base}/Tickets.planner_${ver}_aarch64.app.tar.gz`
-                },
-                "darwin-x86_64": {
-                  signature: x64Sig.trim(),
-                  url: `${base}/Tickets.planner_${ver}_x64.app.tar.gz`
                 }
               }
             };
             fs.writeFileSync("artifacts/latest.json", JSON.stringify(manifest, null, 2));
-          ' "$VER" "$BASE" "$PUB_DATE" "$WIN_SIG" "$ARM_SIG" "$X64_SIG"
+          ' "$VER" "$BASE" "$PUB_DATE" "$WIN_SIG" "$ARM_SIG"
           cat artifacts/latest.json
           az storage blob upload-batch --destination releases --destination-path "$TAG" --source artifacts --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
           az storage blob upload --container-name releases --name "latest.json" --file artifacts/latest.json --content-type application/json --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
-            gh release create "$TAG" artifacts/* --title "Tickets planner v${VER}" --notes "Signed Windows (x64) and macOS (Apple Silicon & Intel) release deployed to Azure Blob Storage."
+            gh release create "$TAG" artifacts/* --title "Tickets planner v${VER}" --notes "Signed Windows (x64) and macOS (Apple Silicon) release deployed to Azure Blob Storage."
           fi
