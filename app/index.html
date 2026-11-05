@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <!--
+    THESIS: A calm, clear-white planner where each ADO work-item type wears its own pastel, so hierarchy reads by colour family; refuses the cold blue-black dev-tool dashboard. Dark mode is the same room at dusk: warm charcoal, pastels kept soft.
+    OWN-WORLD: White paper cards on a faint warm-grey desk, warm charcoal ink, Segoe UI Variable (humanist, native to Windows/Edge), soft radii, offset shadows. Pastels: Epic lavender, Feature mint, Story periwinkle, Task apricot, Bug rose; states as pale tinted pills with deep same-hue text.
+    STORY: Raul scans sprint columns, sees each ticket's type and lineage at a glance, and acts in place.
+    FIRST VIEWPORT: Unchanged layout: header with views, filter row, Backlog + sprint columns of cards; detail panel slides in on the right.
+    FORM: Brief-pinned (clear white, humanistic, pastels); no concept roll.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tickets planner</title>
+    <script>
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem('theme'); } catch (e) {}
+        if (t !== 'dark' && t !== 'light') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.classList.toggle('dark', t === 'dark');
+        document.documentElement.style.colorScheme = t;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
