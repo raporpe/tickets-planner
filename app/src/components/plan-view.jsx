@@ -3,6 +3,17 @@ import { createPortal } from 'react-dom';
 import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { WorkItemCard } from '@/components/work-item';
@@ -492,14 +503,32 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                   </Button>
                 )}
                 {nextList.some((i) => layout[i.id]?.col === next.key) && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" onClick={() => clearColumn(next.key)} aria-label={`Tidy up ${next.title}`}>
-                        <LayoutGrid className="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Tidy up: forget where you placed these cards</TooltipContent>
-                  </Tooltip>
+                  <AlertDialog>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" aria-label={`Tidy up ${next.title}`}>
+                            <LayoutGrid className="size-3.5" />
+                          </Button>
+                        </AlertDialogTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>Tidy up: forget where you placed these cards</TooltipContent>
+                    </Tooltip>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Tidy up {next.title}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Your ordering will be removed and you won't be able to go back.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={() => clearColumn(next.key)}>
+                          Tidy up
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
                 <Count items={nextList} />
               </div>
