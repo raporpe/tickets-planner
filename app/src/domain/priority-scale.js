@@ -38,8 +38,8 @@ export const PRIORITIES = [
 
 const PRIORITY_TONE = {
   0: 'bg-rose-100 text-rose-900 ring-rose-300 dark:bg-rose-400/20 dark:text-rose-200 dark:ring-rose-400/35',
-  1: 'bg-orange-50 text-orange-800 ring-orange-200/80 dark:bg-orange-300/10 dark:text-orange-200 dark:ring-orange-300/25',
-  2: 'bg-amber-50 text-amber-800 ring-amber-200/80 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25',
+  1: 'bg-amber-50 text-amber-800 ring-amber-200/80 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25',
+  2: 'bg-muted text-muted-foreground ring-border',
   3: 'bg-muted text-muted-foreground ring-border',
   4: 'bg-muted/70 text-muted-foreground/80 ring-border/80',
 };

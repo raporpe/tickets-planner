@@ -5,7 +5,6 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { FeaturePicker, PrioritySelect, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { RichEditor, RichView } from '@/components/rich-text';
 import { HierarchyTree, MissingParent } from '@/components/hierarchy';
@@ -469,10 +468,11 @@ function TitleEditor({ title, onSave, onEditingChange }) {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="group/title -mx-1.5 w-full rounded px-1.5 py-0.5 text-left text-lg leading-snug font-semibold hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          title={title}
+          className="group/title -mx-1.5 flex h-8 w-full items-center gap-1.5 rounded px-1.5 text-left text-lg font-semibold hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-          {title}
-          <Pencil className="ml-1.5 inline size-3.5 align-baseline text-muted-foreground opacity-40 transition-opacity group-hover/title:opacity-100 group-focus-visible/title:opacity-100" />
+          <span className="min-w-0 truncate">{title}</span>
+          <Pencil className="size-3.5 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover/title:opacity-100 group-focus-visible/title:opacity-100" />
         </button>
       </SheetTitle>
     );
@@ -480,7 +480,8 @@ function TitleEditor({ title, onSave, onEditingChange }) {
   return (
     <div>
       <SheetTitle className="sr-only">{title}</SheetTitle>
-      <Textarea
+      <input
+        type="text"
         autoFocus
         value={value}
         disabled={saving}
@@ -498,8 +499,7 @@ function TitleEditor({ title, onSave, onEditingChange }) {
           }
         }}
         aria-label="Title"
-        className="min-h-0 resize-none text-lg! leading-snug font-semibold"
-        rows={2}
+        className="-mx-1.5 h-8 w-full rounded-md border border-input bg-transparent px-1.5 text-lg font-semibold focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
       />
     </div>
   );
