@@ -6,9 +6,10 @@ export const MOD = isMac ? '⌘' : 'Ctrl';
 /** Ticket actions. `keys` is what the cheat sheet and hints show; `detailOnly` actions open the ticket first. */
 export const TICKET_ACTIONS = [
   { id: 'state', label: 'Change state', keys: ['S'] },
+  { id: 'priority', label: 'Change priority', keys: ['P'] },
   { id: 'sprint', label: 'Change sprint', keys: ['Shift', 'C'] },
   { id: 'feature', label: 'Change Feature', keys: ['F'] },
-  { id: 'link-pr', label: 'Link a pull request', keys: ['P'], detailOnly: true },
+  { id: 'link-pr', label: 'Link a pull request', keys: ['L'], detailOnly: true },
   { id: 'comment', label: 'Add a comment', keys: ['M'], detailOnly: true },
   { id: 'edit', label: 'Edit description', keys: ['E'], detailOnly: true },
   { id: 'open-ado', label: 'Open in Azure DevOps', keys: ['O'] },

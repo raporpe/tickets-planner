@@ -295,8 +295,8 @@ function PullRequests({ id, prs, who, onLink, onUnlink, onEditingChange }) {
           ) : ready ? (
             <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px]">Enter ↵</kbd>
           ) : (
-            <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px] group-focus-within/pr:hidden" title="Press P to jump here">
-              P
+            <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px] group-focus-within/pr:hidden" title="Press L to jump here">
+              L
             </kbd>
           )}
         </span>
@@ -1003,7 +1003,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                 ) : (
                   <StatePill state={detail.state} />
                 )}
-                <PrioritySelect priority={detail.priority} onChange={savePriority} disabled={pending} showGuide />
+                <PrioritySelect id={detail.id} priority={detail.priority} onChange={savePriority} disabled={pending} showGuide />
                 {pending && (
                   <span role="status" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <Loader2 className="size-3 animate-spin" /> Saving…

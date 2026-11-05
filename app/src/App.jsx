@@ -397,7 +397,7 @@ export default function App() {
 
   useEffect(() => {
     let gAt = 0;
-    const keys = { s: 'state', f: 'feature', p: 'link-pr', m: 'comment', e: 'edit', o: 'open-ado', c: 'copy' };
+    const keys = { s: 'state', p: 'priority', f: 'feature', l: 'link-pr', m: 'comment', e: 'edit', o: 'open-ado', c: 'copy' };
     const onKey = (e) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || isTyping(e) || overlayOpen() || helpRef.current) return;
       const k = e.key.toLowerCase();
