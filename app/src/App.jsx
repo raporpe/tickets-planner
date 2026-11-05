@@ -154,7 +154,7 @@ function LoadingProgress({ progress, elapsedMs }) {
 // Mirrors the real Sprint planning layout: one-card-wide Backlog, the next sprint's whiteboard, the drawer handle.
 function LoadingPlan({ progress, elapsedMs }) {
   return (
-    <div className="relative h-full overflow-hidden" aria-busy="true" aria-label="Loading sprint planning">
+    <div className="relative h-full overflow-hidden" aria-busy="true" aria-label="Loading my sprint">
       <div className="flex h-full gap-3 pr-14 pb-14 pl-[3.75rem]">
         <div className="relative flex h-full min-w-[19rem] flex-1 flex-col rounded-lg border bg-muted/40">
           <ColumnHeaderSkeleton wide />
@@ -411,7 +411,7 @@ export default function App() {
       }
       if (gAt && Date.now() - gAt < 1200 && !e.shiftKey) {
         gAt = 0;
-        const nav = { s: 'plan', f: 'features', a: 'attention' }[k];
+        const nav = { s: 'plan', f: 'features', a: 'attention', h: 'attention' }[k];
         if (nav) {
           e.preventDefault();
           goTo(nav);
@@ -508,13 +508,13 @@ export default function App() {
         <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
           <TabsList className="h-8">
             <TabsTrigger value="plan" className="text-xs">
-              <KanbanSquare /> Sprint planning
+              <KanbanSquare /> My sprint
             </TabsTrigger>
             <TabsTrigger value="features" className="text-xs">
               <Layers /> By Feature
             </TabsTrigger>
             <TabsTrigger value="attention" className="text-xs">
-              <TriangleAlert /> Needs attention
+              <TriangleAlert /> Hygiene
               {attentionCount > 0 && (
                 <span className="ml-0.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 tabular-nums dark:bg-amber-300/15 dark:text-amber-200">{attentionCount}</span>
               )}

@@ -17,9 +17,9 @@ export const TICKET_ACTIONS = [
 ];
 
 export const NAV_ACTIONS = [
-  { id: 'plan', label: 'Go to Sprint planning', keys: ['G', 'S'] },
+  { id: 'plan', label: 'Go to My sprint', keys: ['G', 'S'] },
   { id: 'features', label: 'Go to By Feature', keys: ['G', 'F'] },
-  { id: 'attention', label: 'Go to Needs attention', keys: ['G', 'A'] },
+  { id: 'attention', label: 'Go to Hygiene', keys: ['G', 'H'] },
 ];
 
 export const VIEW_ACTIONS = [
