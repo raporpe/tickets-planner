@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { api } from '@/api';
-import { columnKeyOf } from '@/lib/planning';
+import { api } from '../api.js';
+import { columnKeyOf } from '../domain/sprint-policy.js';
 
 const LAYOUT_KEY = 'planner.board-layout.v1';
 const NOTES_KEY = 'planner.board-notes.v1';
@@ -10,8 +10,9 @@ const DEBOUNCE_MS = 800;
 const TOMBSTONE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 function readJson(key, fallback) {
+  if (typeof window === 'undefined') return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
     return raw ? (JSON.parse(raw) ?? fallback) : fallback;
   } catch {
     return fallback;
@@ -19,8 +20,9 @@ function readJson(key, fallback) {
 }
 
 function writeJson(key, value) {
+  if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Storage unavailable or full: state still works in memory for this session.
   }
