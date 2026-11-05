@@ -1003,7 +1003,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                 ) : (
                   <StatePill state={detail.state} />
                 )}
-                <PrioritySelect priority={detail.priority} onChange={savePriority} disabled={pending} />
+                <PrioritySelect priority={detail.priority} onChange={savePriority} disabled={pending} showGuide />
                 {pending && (
                   <span role="status" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <Loader2 className="size-3 animate-spin" /> Saving…

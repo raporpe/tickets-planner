@@ -26,6 +26,12 @@
 - **Weekly tag** (Raul's personal filter): Monday date of the current week as `YYYYMMDD`. Add it to Tasks worked on that week; keep previous weeks' tags.
 - **Features board columns → state**: New→New; Backlog of ideas / Product & Design / Ready for development→Active; In Development→Work in Progress; QA/Testing→Testing; Ready to flight→Resolved; Flighting→Flighting; Shipped/Closed→Closed. Lanes: Core Experience & Quality, Growth, Others.
 - **Area for Raul's work**: `SAN SA\Scaffolding\Fundamental`.
+- **Priority scale (P0–P4, Severity × Reach)**:
+  - `P0` (**Blocker**): App unusable or core journey down at broad scale with no workaround; or safety/privacy/store-removal risk (Ack ~1h, mitigate mins–hrs).
+  - `P1` (**Major**): Important feature broken for a meaningful subset, or core journey impaired with a workaround (Ack ≤2d, client fix ≤5d).
+  - `P2` (**Moderate**): Default bucket for everyday bugs — non-critical feature degraded/inconvenient, completable via retry/workaround.
+  - `P3` (**Minor**): Small, localized, or low-frequency annoyance with negligible functional impact.
+  - `P4` (**Trivial**): Cosmetic or editorial only (spacing, alignment, wording) with no functional, privacy, or a11y impact.
 
 ## Key Learnings
 

@@ -18,14 +18,46 @@ const STATE_TONE = {
 export const stateTone = (s) => STATE_TONE[s] || STATE_TONE.New;
 
 export const PRIORITIES = [
-  { value: 1, label: 'P1', hint: 'Critical' },
-  { value: 2, label: 'P2', hint: 'High' },
-  { value: 3, label: 'P3', hint: 'Medium' },
-  { value: 4, label: 'P4', hint: 'Low' },
+  {
+    value: 0,
+    label: 'P0',
+    hint: 'Blocker',
+    rule: 'App unusable or core journey down at broad scale with no workaround; or safety, privacy, or store-removal risk.',
+    sla: 'Ack ~1h · Mitigate mins–hrs · Server same day / Client ≤24h',
+  },
+  {
+    value: 1,
+    label: 'P1',
+    hint: 'Major',
+    rule: 'Important feature broken for a meaningful subset (market, OS, device family), or core journey impaired with a workaround.',
+    sla: 'Ack ≤2d · Client code-complete ≤5d',
+  },
+  {
+    value: 2,
+    label: 'P2',
+    hint: 'Moderate',
+    rule: 'Default for everyday bugs: non-critical feature degraded or inconvenient, task still completable via retry or workaround.',
+    sla: 'Weekly triage · Next scheduled release',
+  },
+  {
+    value: 3,
+    label: 'P3',
+    hint: 'Minor',
+    rule: 'Small, localized, or low-frequency annoyance with negligible functional impact; most users will not notice.',
+    sla: 'Weekly triage · Bundle when convenient',
+  },
+  {
+    value: 4,
+    label: 'P4',
+    hint: 'Trivial',
+    rule: 'Cosmetic or editorial only (spacing, alignment, wording) with no functional, privacy, accessibility, or data impact.',
+    sla: 'Routine release / may defer',
+  },
 ];
 
 const PRIORITY_TONE = {
-  1: 'bg-rose-50 text-rose-800 ring-rose-200/80 dark:bg-rose-300/10 dark:text-rose-200 dark:ring-rose-300/25',
+  0: 'bg-rose-100 text-rose-900 ring-rose-300 dark:bg-rose-400/20 dark:text-rose-200 dark:ring-rose-400/35',
+  1: 'bg-orange-50 text-orange-800 ring-orange-200/80 dark:bg-orange-300/10 dark:text-orange-200 dark:ring-orange-300/25',
   2: 'bg-amber-50 text-amber-800 ring-amber-200/80 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25',
   3: 'bg-muted text-muted-foreground ring-border',
   4: 'bg-muted/70 text-muted-foreground/80 ring-border/80',
