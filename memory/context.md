@@ -36,4 +36,6 @@
 - **REST tag updates**: When updating `System.Tags` via `az rest` PATCH, use `op="replace"` — `op="add"` (and `az boards work-item update --fields "System.Tags=..."`) silently no-ops when tags already exist. Build the URI as a variable (`$org + "/_apis/wit/workitems/" + $id + "?api-version=7.1"`). **`az rest` needs `--resource 499b84ac-1321-427f-aa17-267ca6975798`** or it fails with TF400813. Pass JSON-patch bodies via a temp file (`--body @path`).
 - **Azure DevOps MCP** may fail with OAuth 401; fall back to the `az` CLI / REST.
 - **Python** is not installed on this machine (Store stub only); use Node.js for scripts.
-- **Desktop app (`app/`) updates**: After any code change to `app/`, always bump the version, build the Tauri NSIS installer (`npm run desktop:build`), install it silently (`/S`) to `C:\Users\raulpo\AppData\Local\Tickets planner\tickets-planner.exe`, and relaunch via `Win32_Process.Create` so Raul can test immediately.
+- **Desktop app (`app/`) updates — local beta-test before production release**:
+  1. After any code change to `app/`, always build and install locally **first** (`npm run desktop:build`, silent NSIS `/S` install to `C:\Users\raulpo\AppData\Local\Tickets planner\tickets-planner.exe`, and relaunch via `Win32_Process.Create`) so Raul can beta-test the change locally.
+  2. **Do not** push or trigger a production release on `raporpe/tickets-planner` until Raul has verified the local build and asks to release it.

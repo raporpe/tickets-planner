@@ -220,7 +220,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
       className={cn(
         'group rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_oklch(0.4_0.02_60/0.06),0_2px_6px_-2px_oklch(0.4_0.02_60/0.08)] transition-[opacity,border-color,box-shadow,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:border-foreground/15 motion-reduce:hover:translate-y-0 hover:shadow-[0_2px_4px_oklch(0.4_0.02_60/0.06),0_6px_14px_-4px_oklch(0.4_0.02_60/0.12)] dark:shadow-[0_1px_2px_oklch(0_0_0/0.3)] dark:hover:shadow-[0_4px_12px_-2px_oklch(0_0_0/0.45)]',
         unplanned &&
-          'border-amber-300/75 hover:border-amber-400/90 dark:border-amber-300/30 dark:bg-amber-300/[0.03] dark:hover:border-amber-300/45',
+          'border-amber-300/75 hover:border-amber-400/90 dark:border-amber-300/35 dark:hover:border-amber-300/50',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
         grab && 'cursor-grab active:cursor-grabbing',
