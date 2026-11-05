@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, ExternalLink, TriangleAlert, Zap } from 'lucide-react';
+import { Check, ChevronsUpDown, ExternalLink, Info, TriangleAlert, Zap } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -10,9 +10,10 @@ import { useShortcutOpen } from '@/lib/shortcuts';
 
 export function PriorityPill({ priority, compact = false, className }) {
   if (priority == null) return null;
+  const meta = PRIORITIES.find((p) => p.value === Number(priority));
   return (
     <span
-      title={`Priority ${priority}`}
+      title={meta ? `${meta.label} — ${meta.hint}: ${meta.rule}` : `Priority ${priority}`}
       className={cn(
         'inline-flex items-center rounded-full font-medium ring-1 ring-inset tabular-nums',
         compact ? 'px-1.5 text-[10px]' : 'h-5 px-2 text-[11px]',
@@ -25,31 +26,67 @@ export function PriorityPill({ priority, compact = false, className }) {
   );
 }
 
-export function PrioritySelect({ priority, onChange, disabled }) {
+export function PrioritySelect({ priority, onChange, disabled, showGuide = false }) {
   const val = priority != null ? String(priority) : '';
   return (
-    <Select value={val} onValueChange={(v) => Number(v) !== priority && onChange(Number(v))} disabled={disabled}>
-      <SelectTrigger
-        title="Change priority"
-        size="sm"
-        aria-label="Priority"
-        className="h-6! gap-1 border-0 bg-transparent p-0 pr-1 shadow-none hover:bg-accent focus-visible:ring-2 [&>svg]:size-3"
-      >
-        <SelectValue placeholder={<span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}>
-          {priority != null ? <PriorityPill priority={priority} /> : <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent position="popper">
-        {PRIORITIES.map((p) => (
-          <SelectItem key={p.value} value={String(p.value)}>
-            <span className="flex items-center gap-2">
-              <PriorityPill priority={p.value} />
-              <span className="text-xs text-muted-foreground">{p.hint}</span>
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="inline-flex items-center gap-0.5">
+      <Select value={val} onValueChange={(v) => Number(v) !== priority && onChange(Number(v))} disabled={disabled}>
+        <SelectTrigger
+          title="Change priority"
+          size="sm"
+          aria-label="Priority"
+          className="h-6! gap-1 border-0 bg-transparent p-0 pr-1 shadow-none hover:bg-accent focus-visible:ring-2 [&>svg]:size-3"
+        >
+          <SelectValue placeholder={<span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}>
+            {priority != null ? <PriorityPill priority={priority} /> : <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent position="popper" className="w-64">
+          {PRIORITIES.map((p) => (
+            <SelectItem key={p.value} value={String(p.value)}>
+              <span className="flex items-center gap-2">
+                <PriorityPill priority={p.value} />
+                <span className="text-xs font-medium text-foreground">{p.hint}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {showGuide && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Priority triage scale guide"
+              title="Priority triage scale (P0–P4)"
+              className=" inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <Info className="size-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-96 p-3.5 text-xs">
+            <p className="font-semibold text-foreground">Priority scale (Severity × Reach)</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              Combine impairment severity with affected reach. Escalate for safety/privacy/store risk or growing rollout impact.
+            </p>
+            <ul className="mt-2.5 divide-y divide-border/60 border-t pt-1">
+              {PRIORITIES.map((p) => (
+                <li key={p.value} className="py-1.5 first:pt-1 last:pb-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                      <PriorityPill priority={p.value} compact />
+                      {p.hint}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{p.sla}</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{p.rule}</p>
+                </li>
+              ))}
+            </ul>
+          </PopoverContent>
+        </Popover>
+      )}
+    </div>
   );
 }
 
@@ -220,7 +257,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
       className={cn(
         'group rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_oklch(0.4_0.02_60/0.06),0_2px_6px_-2px_oklch(0.4_0.02_60/0.08)] transition-[opacity,border-color,box-shadow,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:border-foreground/15 motion-reduce:hover:translate-y-0 hover:shadow-[0_2px_4px_oklch(0.4_0.02_60/0.06),0_6px_14px_-4px_oklch(0.4_0.02_60/0.12)] dark:shadow-[0_1px_2px_oklch(0_0_0/0.3)] dark:hover:shadow-[0_4px_12px_-2px_oklch(0_0_0/0.45)]',
         unplanned &&
-          'border-amber-300/75 hover:border-amber-400/90 dark:border-amber-300/30 dark:bg-amber-300/[0.03] dark:hover:border-amber-300/45',
+          'border-amber-300/75 hover:border-amber-400/90 dark:border-amber-300/35 dark:hover:border-amber-300/50',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
         grab && 'cursor-grab active:cursor-grabbing',

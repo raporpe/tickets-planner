@@ -980,8 +980,8 @@ impl Backend {
             add(&mut ops, "/fields/System.State", state);
         }
         if let Some(priority) = body.get("priority").and_then(Value::as_u64) {
-            if !(1..=4).contains(&priority) {
-                return Err(Error::new(400, "Priority must be between 1 and 4"));
+            if !(0..=4).contains(&priority) {
+                return Err(Error::new(400, "Priority must be between 0 and 4"));
             }
             add(&mut ops, "/fields/Microsoft.VSTS.Common.Priority", priority);
         }
