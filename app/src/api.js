@@ -1,28 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
-import { isDesktop } from '@/lib/desktop';
+import { isDesktop } from './lib/desktop.js';
 
 async function request(method, url, body) {
-  if (isDesktop) {
-    try {
-      return await invoke('planner_request', { method, url, body: body ?? null });
-    } catch (error) {
-      const err = new Error(error?.error || String(error));
-      err.status = error?.status || 500;
-      throw err;
-    }
-  }
-  const res = await fetch(`/api${url}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || `${method} ${url} failed (${res.status})`);
-    err.status = res.status;
+  try {
+    return await invoke('planner_request', { method, url, body: body ?? null });
+  } catch (error) {
+    const err = new Error(error?.error || String(error));
+    err.status = error?.status || 500;
     throw err;
   }
-  return data;
 }
 
 export const api = {
@@ -35,6 +21,8 @@ export const api = {
   startDevice: () => request('POST', '/auth/device'),
   pollDevice: () => request('GET', '/auth/device'),
   overview: () => request('GET', '/overview'),
+  settings: () => request('GET', '/settings'),
+  saveSettings: (patch) => request('PATCH', '/settings', patch),
   update: (id, patch) => request('PATCH', `/workitems/${id}`, patch),
   ancestors: (id) => request('GET', `/workitems/${id}/ancestors`),
   children: (id) => request('GET', `/workitems/${id}/children`),

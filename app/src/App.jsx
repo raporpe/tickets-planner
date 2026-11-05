@@ -21,6 +21,7 @@ import { copyItem } from '@/lib/copy-item';
 import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@/lib/shortcuts';
 import { ShortcutsHelp } from '@/components/shortcuts-help';
 import { setTheme, useTheme } from '@/lib/theme';
+import { workspaceState } from '@/lib/workspace-state';
 import { openExternal } from '@/lib/desktop';
 
 function ThemeToggle() {
@@ -233,7 +234,9 @@ export default function App() {
     setLoading(true);
     setLoadError(null);
     try {
-      setData(await api.overview());
+      const overview = await api.overview();
+      setData(overview);
+      workspaceState.reconcileWithOverview(overview);
     } catch (e) {
       if (e.status === 401) return checkAuth();
       setLoadError(e.message);
@@ -581,7 +584,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 pt-3">
+        <div className="flex min-h-0 flex-1 flex-col pt-3">
           {loadError && (
             <div className="mx-4 mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               Could not load from Azure DevOps: {loadError}{' '}
@@ -594,14 +597,14 @@ export default function App() {
             (!auth || loading) && (tab === 'plan' ? <LoadingPlan progress={progress} elapsedMs={elapsedMs} /> : <LoadingList progress={progress} elapsedMs={elapsedMs} />)
           ) : (
             <>
-              <TabsContent value="plan" className="h-full">
+              <TabsContent value="plan" forceMount className="h-full min-h-0 data-[state=inactive]:hidden">
                 <PlanView {...viewProps} items={sprintItems} />
               </TabsContent>
-              <TabsContent value="features" className="h-full overflow-y-auto">
+              <TabsContent value="features" forceMount className="h-full min-h-0 overflow-y-auto data-[state=inactive]:hidden">
                 <FeaturesView {...viewProps} onMoveFeature={onMoveFeature} />
               </TabsContent>
-              <TabsContent value="attention" className="h-full overflow-y-auto">
-                <AttentionView {...viewProps} items={data.items} />
+              <TabsContent value="attention" forceMount className="flex h-full min-h-0 flex-col overflow-y-auto data-[state=inactive]:hidden">
+                <AttentionView {...viewProps} items={data.items} active={tab === 'attention'} />
               </TabsContent>
             </>
           )}

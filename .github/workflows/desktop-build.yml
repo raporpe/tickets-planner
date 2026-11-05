@@ -86,14 +86,14 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Generate latest.json and publish GitHub Release
+      - name: Generate latest.json and publish to Azure Blob Storage and GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
         run: |
           VER=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
           TAG="v${VER}"
-          REPO="${GITHUB_REPOSITORY}"
-          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          BASE="https://stticketsplanner9284.blob.core.windows.net/releases/${TAG}"
           WIN_SIG=$(cat "artifacts/Tickets.planner_${VER}_x64-setup.exe.sig")
           ARM_SIG=$(cat "artifacts/Tickets.planner_${VER}_aarch64.app.tar.gz.sig")
           X64_SIG=$(cat "artifacts/Tickets.planner_${VER}_x64.app.tar.gz.sig")
@@ -123,8 +123,10 @@ jobs:
             fs.writeFileSync("artifacts/latest.json", JSON.stringify(manifest, null, 2));
           ' "$VER" "$BASE" "$PUB_DATE" "$WIN_SIG" "$ARM_SIG" "$X64_SIG"
           cat artifacts/latest.json
+          az storage blob upload-batch --destination releases --destination-path "$TAG" --source artifacts --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
+          az storage blob upload --container-name releases --name "latest.json" --file artifacts/latest.json --content-type application/json --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
           else
-            gh release create "$TAG" artifacts/* --title "Tickets planner v${VER}" --notes "Signed Windows (x64) and macOS (Apple Silicon & Intel) release with automatic startup self-update."
+            gh release create "$TAG" artifacts/* --title "Tickets planner v${VER}" --notes "Signed Windows (x64) and macOS (Apple Silicon & Intel) release deployed to Azure Blob Storage."
           fi

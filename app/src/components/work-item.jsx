@@ -56,16 +56,18 @@ export function PrioritySelect({ id, priority, onChange, disabled, compact = fal
             {priority != null ? <PriorityPill priority={priority} compact={compact} /> : emptyPill}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent position="popper" className="w-52">
-          {PRIORITIES.map((p) => (
-            <SelectItem key={p.value} value={String(p.value)}>
-              <span className="flex items-center gap-2">
-                <PriorityPill priority={p.value} />
-                <span className="text-xs font-medium text-foreground">{p.hint}</span>
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
+        {openProps.open && (
+          <SelectContent position="popper" className="w-52">
+            {PRIORITIES.map((p) => (
+              <SelectItem key={p.value} value={String(p.value)}>
+                <span className="flex items-center gap-2">
+                  <PriorityPill priority={p.value} />
+                  <span className="text-xs font-medium text-foreground">{p.hint}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        )}
       </Select>
       {showGuide && (
         <Popover>
@@ -128,55 +130,91 @@ export function StateSelect({ item, states, onChange, disabled }) {
           <StatePill state={item.state} />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent position="popper">
-        {(states || [item.state]).map((s) => (
-          <SelectItem key={s} value={s}>
-            <StatePill state={s} />
-          </SelectItem>
-        ))}
-      </SelectContent>
+      {openProps.open && (
+        <SelectContent position="popper">
+          {(states || [item.state]).map((s) => (
+            <SelectItem key={s} value={s}>
+              <StatePill state={s} />
+            </SelectItem>
+          ))}
+        </SelectContent>
+      )}
     </Select>
   );
 }
 
+const sprintMapsCache = new WeakMap();
+function getSprintByPath(sprints) {
+  if (!sprints) return new Map();
+  let map = sprintMapsCache.get(sprints);
+  if (!map) {
+    map = new Map(sprints.map((s) => [s.path, s]));
+    sprintMapsCache.set(sprints, map);
+  }
+  return map;
+}
+
 export function SprintSelect({ item, data, onChange, disabled, className }) {
-  const known = item.iterationPath === data.backlogPath || data.sprints.some((s) => s.path === item.iterationPath);
+  const sprintByPath = getSprintByPath(data.sprints);
+  const matchedSprint = sprintByPath.get(item.iterationPath);
+  const known = item.iterationPath === data.backlogPath || !!matchedSprint;
+  const currentLabel =
+    item.iterationPath === data.backlogPath
+      ? 'Backlog'
+      : matchedSprint
+        ? matchedSprint.name
+        : item.iterationPath.replace(/^SAN SA\\/, '');
   const { ref, ...openProps } = useShortcutOpen('sprint', item.id);
   return (
     <Select {...openProps} value={item.iterationPath} onValueChange={(p) => p !== item.iterationPath && onChange({ iterationPath: p })} disabled={disabled}>
       <SelectTrigger ref={ref} title="Change sprint (Shift C)" size="sm" aria-label={`Sprint of ${item.id}`} className={cn('h-7! max-w-48 text-xs', className)}>
-        <SelectValue />
+        <SelectValue>{currentLabel}</SelectValue>
       </SelectTrigger>
-      <SelectContent position="popper">
-        <SelectItem value={data.backlogPath}>Backlog</SelectItem>
-        <SelectGroup>
-          <SelectLabel>{canBeInSprint(item.type) ? 'Sprints' : 'Sprints (Tasks and Bugs only)'}</SelectLabel>
-          {data.sprints.map((s) => (
-            <SelectItem key={s.path} value={s.path} disabled={!canBeInSprint(item.type) && s.path !== item.iterationPath}>
-              {s.name} <span className="text-muted-foreground">· {s.timeFrame}</span>
-            </SelectItem>
-          ))}
-        </SelectGroup>
-        {!known && (
-          <>
-            <SelectSeparator />
-            <SelectItem value={item.iterationPath} disabled>
-              {item.iterationPath.replace(/^SAN SA\\/, '')}
-            </SelectItem>
-          </>
-        )}
-      </SelectContent>
+      {openProps.open && (
+        <SelectContent position="popper">
+          <SelectItem value={data.backlogPath}>Backlog</SelectItem>
+          <SelectGroup>
+            <SelectLabel>{canBeInSprint(item.type) ? 'Sprints' : 'Sprints (Tasks and Bugs only)'}</SelectLabel>
+            {data.sprints.map((s) => (
+              <SelectItem key={s.path} value={s.path} disabled={!canBeInSprint(item.type) && s.path !== item.iterationPath}>
+                {s.name} <span className="text-muted-foreground">· {s.timeFrame}</span>
+              </SelectItem>
+            ))}
+          </SelectGroup>
+          {!known && (
+            <>
+              <SelectSeparator />
+              <SelectItem value={item.iterationPath} disabled>
+                {item.iterationPath.replace(/^SAN SA\\/, '')}
+              </SelectItem>
+            </>
+          )}
+        </SelectContent>
+      )}
     </Select>
   );
 }
 
+const groupedFeaturesCache = new WeakMap();
+function getGroupedBoardFeatures(features) {
+  if (!features) return { byId: new Map(), byColumn: [] };
+  let cached = groupedFeaturesCache.get(features);
+  if (!cached) {
+    const byId = new Map(features.map((f) => [f.id, f]));
+    const board = features
+      .filter((f) => f.onBoard && !isDone(f))
+      .sort((a, b) => columnRank(a.column) - columnRank(b.column) || a.title.localeCompare(b.title));
+    const map = board.reduce((m, f) => m.set(f.column || 'Unknown', [...(m.get(f.column || 'Unknown') || []), f]), new Map());
+    cached = { byId, byColumn: [...map.entries()] };
+    groupedFeaturesCache.set(features, cached);
+  }
+  return cached;
+}
+
 export function FeaturePicker({ item, features, onPick, disabled, compact, label, className }) {
   const { open, onOpenChange: setOpen, ref } = useShortcutOpen('feature', item.id);
-  const current = features.find((f) => f.id === item.featureId);
-  const board = features
-    .filter((f) => f.onBoard && !isDone(f))
-    .sort((a, b) => columnRank(a.column) - columnRank(b.column) || a.title.localeCompare(b.title));
-  const byColumn = board.reduce((m, f) => m.set(f.column || 'Unknown', [...(m.get(f.column || 'Unknown') || []), f]), new Map());
+  const { byId, byColumn } = getGroupedBoardFeatures(features);
+  const current = byId.get(item.featureId);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -198,32 +236,34 @@ export function FeaturePicker({ item, features, onPick, disabled, compact, label
           <ChevronsUpDown className={cn('size-3 shrink-0', compact ? 'opacity-0 group-hover/fp:opacity-60' : 'opacity-50')} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[30rem] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Move under board Feature…" />
-          <CommandList className="max-h-80">
-            <CommandEmpty>No board Feature matches.</CommandEmpty>
-            {[...byColumn.entries()].map(([col, list]) => (
-              <CommandGroup key={col} heading={col}>
-                {list.map((f) => (
-                  <CommandItem
-                    key={f.id}
-                    value={`${f.id} ${f.title}`}
-                    onSelect={() => {
-                      setOpen(false);
-                      if (f.id !== item.featureId) onPick(f.id);
-                    }}
-                  >
-                    <Check className={cn('size-3.5', f.id === item.featureId ? 'opacity-100' : 'opacity-0')} />
-                    <span className="min-w-0 flex-1 truncate">{f.title}</span>
-                    <span className="pl-2 text-[11px] text-muted-foreground tabular-nums">{f.id}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
+      {open && (
+        <PopoverContent className="w-[30rem] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Move under board Feature…" />
+            <CommandList className="max-h-80">
+              <CommandEmpty>No board Feature matches.</CommandEmpty>
+              {byColumn.map(([col, list]) => (
+                <CommandGroup key={col} heading={col}>
+                  {list.map((f) => (
+                    <CommandItem
+                      key={f.id}
+                      value={`${f.id} ${f.title}`}
+                      onSelect={() => {
+                        setOpen(false);
+                        if (f.id !== item.featureId) onPick(f.id);
+                      }}
+                    >
+                      <Check className={cn('size-3.5', f.id === item.featureId ? 'opacity-100' : 'opacity-0')} />
+                      <span className="min-w-0 flex-1 truncate">{f.title}</span>
+                      <span className="pl-2 text-[11px] text-muted-foreground tabular-nums">{f.id}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ))}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      )}
     </Popover>
   );
 }

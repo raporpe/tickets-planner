@@ -1,7 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 
 // Embedded browser previews can belong to another Tauri host; only our window uses native commands.
-export const isDesktop = isTauri() && window.__TICKETS_DESKTOP__ === true;
+export const isDesktop = typeof window !== 'undefined' && isTauri() && window.__TICKETS_DESKTOP__ === true;
 
 export async function openExternal(url) {
   const parsed = new URL(url);

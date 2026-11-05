@@ -5,30 +5,29 @@
   "type": "module",
   "description": "Local web UI to review Azure DevOps tickets and plan sprints",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c blue,green \"node --watch server/index.js\" \"vite\"",
-    "build": "vite build",
-    "start": "vite build && node server/index.js",
-    "desktop:dev": "tauri dev",
+    "dev": "tauri dev",
     "dev:web": "vite",
+    "build": "vite build",
+    "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "desktop:fast": "vite build && cargo build --release --manifest-path src-tauri/Cargo.toml",
     "desktop:test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test": "node --test src/domain/__tests__/*.test.js && cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2",
     "@tauri-apps/plugin-opener": "^2",
-    "@azure/identity": "^4.14.1",
-    "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.0",
     "dompurify": "^3.4.17",
-    "express": "^5.3.0",
     "lucide-react": "^1.61.0",
     "marked": "^18.1.1",
+    "piixpal": "^0.4.0",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -41,7 +40,6 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@vitejs/plugin-react": "^6.1.2",
-    "concurrently": "^10.0.6",
     "vite": "^8.3.5"
   }
 }
