@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { FeaturePicker, ItemLink, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
+import { FeaturePicker, ItemLink, PrioritySelect, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { columnRank, isDone, isInSprint } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 import { HierarchyHover } from '@/components/hierarchy';
@@ -24,7 +24,10 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
       )}
     >
       <TypeLabel type={item.type} />
-      <ItemLink item={item} />
+      <div className="flex items-center gap-1.5">
+        <ItemLink item={item} />
+        <PrioritySelect id={item.id} priority={item.priority} onChange={(priority) => onUpdate(item, { priority })} disabled={pending} compact />
+      </div>
       <div className="min-w-0">
         <button
           type="button"

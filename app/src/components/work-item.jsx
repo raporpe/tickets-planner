@@ -26,22 +26,37 @@ export function PriorityPill({ priority, compact = false, className }) {
   );
 }
 
-export function PrioritySelect({ priority, onChange, disabled, showGuide = false }) {
+export function PrioritySelect({ id, priority, onChange, disabled, compact = false, showGuide = false }) {
+  const { ref, ...openProps } = useShortcutOpen('priority', id);
   const val = priority != null ? String(priority) : '';
+  const emptyPill = (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full bg-muted font-medium text-muted-foreground tabular-nums',
+        compact ? 'px-1.5 text-[10px]' : 'h-5 px-2 text-[11px]',
+      )}
+    >
+      P—
+    </span>
+  );
   return (
-    <div className="inline-flex items-center gap-0.5">
-      <Select value={val} onValueChange={(v) => Number(v) !== priority && onChange(Number(v))} disabled={disabled}>
+    <div className={cn('inline-flex items-center gap-0.5', compact && priority == null && !openProps.open && 'w-0 overflow-hidden opacity-0')}>
+      <Select {...openProps} value={val} onValueChange={(v) => Number(v) !== priority && onChange(Number(v))} disabled={disabled}>
         <SelectTrigger
-          title="Change priority"
+          ref={ref}
+          title="Change priority (P)"
           size="sm"
-          aria-label="Priority"
-          className="h-6! gap-1 border-0 bg-transparent p-0 pr-1 shadow-none hover:bg-accent focus-visible:ring-2 [&>svg]:size-3"
+          aria-label={`Priority of ${id || 'work item'}`}
+          className={cn(
+            'border-0 bg-transparent p-0 shadow-none hover:bg-accent focus-visible:ring-2',
+            compact ? 'h-auto! gap-0 rounded-full [&>svg]:hidden' : 'h-6! gap-1 pr-1 [&>svg]:size-3',
+          )}
         >
-          <SelectValue placeholder={<span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}>
-            {priority != null ? <PriorityPill priority={priority} /> : <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">P—</span>}
+          <SelectValue placeholder={emptyPill}>
+            {priority != null ? <PriorityPill priority={priority} compact={compact} /> : emptyPill}
           </SelectValue>
         </SelectTrigger>
-        <SelectContent position="popper" className="w-64">
+        <SelectContent position="popper" className="w-52">
           {PRIORITIES.map((p) => (
             <SelectItem key={p.value} value={String(p.value)}>
               <span className="flex items-center gap-2">
@@ -277,7 +292,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
             <TooltipContent>Brought into the sprint unplanned (Sprint-Unplanned)</TooltipContent>
           </Tooltip>
         )}
-        <PriorityPill priority={item.priority} compact />
+        <PrioritySelect id={item.id} priority={item.priority} onChange={(priority) => onUpdate(item, { priority })} disabled={pending} compact />
         <div className="ml-auto">
           <StateSelect item={item} states={data.states[item.type]} onChange={(p) => onUpdate(item, p)} disabled={pending} />
         </div>
