@@ -16,11 +16,11 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@azure/identity": "^4.14.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2",
     "@tauri-apps/plugin-opener": "^2",
-    "@azure/identity": "^4.14.1",
-    "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -29,6 +29,7 @@
     "express": "^5.3.0",
     "lucide-react": "^1.61.0",
     "marked": "^18.1.1",
+    "piixpal": "^0.4.0",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

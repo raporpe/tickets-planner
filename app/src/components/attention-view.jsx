@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, ChevronRight } from 'lucide-react';
+import 'piixpal';
 import { cn } from '@/lib/utils';
 import { ItemRow } from '@/components/features-view';
 import { ItemLink, TypeLabel } from '@/components/work-item';
@@ -67,7 +68,9 @@ function HygieneAllClear({ openCount }) {
       <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
         {openCount} open {openCount === 1 ? 'ticket meets' : 'tickets meet'} every team board and tagging rule.
       </p>
-      <ul className="mt-5 w-full divide-y divide-border/60 rounded-xl border bg-card px-4 py-1">
+      <p className="mt-1 text-xs font-semibold text-muted-foreground">Sapphiry is happy.</p>
+      <ul className="relative mt-12 w-full divide-y divide-border/60 rounded-xl border bg-card px-4 py-1">
+        <piix-pal pal="boing" scale="3" hue="205" />
         {HYGIENE_CHECKS.map((check) => (
           <li key={check.title} className="flex items-start gap-3 py-2.5 text-left">
             <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300">
