@@ -9,19 +9,28 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
           - os: macos-14
             target: aarch64-apple-darwin
+            platform: darwin-aarch64
           - os: macos-14
             target: x86_64-apple-darwin
+            platform: darwin-x86_64
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,21 +44,87 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri -> target
+          key: ${{ matrix.platform }}
       - run: npm ci
-        working-directory: app
       - run: npm run desktop:test
-        working-directory: app
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build signed Tauri bundle
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: npm run desktop:build -- --target ${{ matrix.target }}
+      - name: Stage release files
+        shell: bash
+        run: |
+          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          OUT="dist-release/${{ matrix.platform }}"
+          mkdir -p "$OUT"
+          BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle"
+          if [ "${{ matrix.platform }}" = "windows-x86_64" ]; then
+            cp "$BUNDLE/nsis/"*-setup.exe "$OUT/Tickets.planner_${VER}_x64-setup.exe"
+            cp "$BUNDLE/nsis/"*-setup.exe.sig "$OUT/Tickets.planner_${VER}_x64-setup.exe.sig"
+          elif [ "${{ matrix.platform }}" = "darwin-aarch64" ]; then
+            cp "$BUNDLE/dmg/"*.dmg "$OUT/Tickets.planner_${VER}_aarch64.dmg"
+            cp "$BUNDLE/macos/"*.app.tar.gz "$OUT/Tickets.planner_${VER}_aarch64.app.tar.gz"
+            cp "$BUNDLE/macos/"*.app.tar.gz.sig "$OUT/Tickets.planner_${VER}_aarch64.app.tar.gz.sig"
+          elif [ "${{ matrix.platform }}" = "darwin-x86_64" ]; then
+            cp "$BUNDLE/dmg/"*.dmg "$OUT/Tickets.planner_${VER}_x64.dmg"
+            cp "$BUNDLE/macos/"*.app.tar.gz "$OUT/Tickets.planner_${VER}_x64.app.tar.gz"
+            cp "$BUNDLE/macos/"*.app.tar.gz.sig "$OUT/Tickets.planner_${VER}_x64.app.tar.gz.sig"
+          fi
+      - uses: actions/upload-artifact@v4
         with:
-          projectPath: app
-          tagName: v__VERSION__
-          releaseName: 'Tickets planner v__VERSION__'
-          releaseBody: 'Automated signed release for Windows (x64) and macOS (Apple Silicon & Intel).'
-          releaseDraft: false
-          prerelease: false
-          args: --target ${{ matrix.target }}
+          name: release-${{ matrix.platform }}
+          if-no-files-found: error
+          path: app/dist-release/${{ matrix.platform }}/*
 
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate latest.json and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          TAG="v${VER}"
+          REPO="${GITHUB_REPOSITORY}"
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          WIN_SIG=$(cat "artifacts/Tickets.planner_${VER}_x64-setup.exe.sig")
+          ARM_SIG=$(cat "artifacts/Tickets.planner_${VER}_aarch64.app.tar.gz.sig")
+          X64_SIG=$(cat "artifacts/Tickets.planner_${VER}_x64.app.tar.gz.sig")
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          node -e '
+            const fs = require("node:fs");
+            const [ver, base, pubDate, winSig, armSig, x64Sig] = process.argv.slice(1);
+            const manifest = {
+              version: ver,
+              notes: `Tickets planner v${ver}`,
+              pub_date: pubDate,
+              platforms: {
+                "windows-x86_64": {
+                  signature: winSig.trim(),
+                  url: `${base}/Tickets.planner_${ver}_x64-setup.exe`
+                },
+                "darwin-aarch64": {
+                  signature: armSig.trim(),
+                  url: `${base}/Tickets.planner_${ver}_aarch64.app.tar.gz`
+                },
+                "darwin-x86_64": {
+                  signature: x64Sig.trim(),
+                  url: `${base}/Tickets.planner_${ver}_x64.app.tar.gz`
+                }
+              }
+            };
+            fs.writeFileSync("artifacts/latest.json", JSON.stringify(manifest, null, 2));
+          ' "$VER" "$BASE" "$PUB_DATE" "$WIN_SIG" "$ARM_SIG" "$X64_SIG"
+          cat artifacts/latest.json
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/* --clobber
+          else
+            gh release create "$TAG" artifacts/* --title "Tickets planner v${VER}" --notes "Signed Windows (x64) and macOS (Apple Silicon & Intel) release with automatic startup self-update."
+          fi
