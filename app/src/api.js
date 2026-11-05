@@ -27,6 +27,8 @@ async function request(method, url, body) {
 
 export const api = {
   attachment: (url) => invoke('planner_attachment', { url }),
+  checkUpdate: () => (isDesktop ? invoke('planner_check_update') : Promise.resolve({ available: false })),
+  installUpdate: () => invoke('planner_install_update'),
   progress: () => request('GET', '/progress'),
   status: () => request('GET', '/auth/status'),
   signInCli: () => request('POST', '/auth/cli'),

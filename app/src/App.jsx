@@ -296,6 +296,27 @@ export default function App() {
     checkAuth();
   }, [checkAuth]);
   useEffect(() => {
+    let cancelled = false;
+    api
+      .checkUpdate()
+      .then((u) => {
+        if (cancelled || !u?.available) return;
+        const id = toast.loading(`Updating Tickets planner to v${u.version}…`, {
+          description: 'Downloading signed release and restarting…',
+        });
+        api.installUpdate().catch((e) => {
+          toast.error(`Update to v${u.version} failed`, {
+            id,
+            description: e?.error || e?.message || String(e),
+          });
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
     if (auth?.signedIn) load();
   }, [auth?.signedIn, load]);
 
