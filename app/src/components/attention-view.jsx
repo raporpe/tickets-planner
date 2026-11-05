@@ -140,7 +140,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
   const openCount = items.filter((i) => !isDone(i)).length;
 
   return (
-    <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-6 px-4 pb-4">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 pb-4">
       {clean && <HygieneAllClear openCount={openCount} />}
       {sprintFeatures.length > 0 && (
         <section>
