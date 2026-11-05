@@ -40,8 +40,10 @@ export const BOARD_COLUMNS = [
   'Product & Design',
   'Ready for development',
   'In Development',
+  'QA/Testing',
   'Ready to flight',
   'Flighting',
+  'Shipped/Closed',
   'Shipped',
 ];
 

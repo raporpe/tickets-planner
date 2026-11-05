@@ -207,15 +207,32 @@ async function getFeatureColumns() {
   return r.value.map((c) => ({ name: c.name, state: c.stateMappings?.Feature, type: c.columnType }));
 }
 
-function summarizeFeature(wi, onBoard) {
+function isFeatureOnBoard(wi, board) {
+  if (board.has(wi.id)) return true;
   const f = wi.fields;
+  if (f['System.State'] === 'Removed') return false;
+  const area = String(f['System.AreaPath'] || '');
+  const iter = String(f['System.IterationPath'] || '');
+  const backlog = sprintPath();
+  const inArea = area === PROJECT || area.startsWith(`${PROJECT}\\`);
+  const inIter = iter === backlog || iter.startsWith(`${backlog}\\`);
+  return inArea && inIter;
+}
+
+function summarizeFeature(wi, onBoard, featureColumns = []) {
+  const f = wi.fields;
+  const state = f['System.State'];
+  const boundaryCol = featureColumns.find((c) => (c.type === 'incoming' || c.type === 'outgoing') && c.state === state)?.name;
+  const rawCol = f[BOARD_FIELDS.column] || null;
+  const fallbackCol = featureColumns.find((c) => c.state === state)?.name || null;
   return {
     id: wi.id,
     title: f['System.Title'],
-    state: f['System.State'],
-    column: f[BOARD_FIELDS.column] || null,
+    state,
+    column: boundaryCol || rawCol || fallbackCol,
     lane: f[BOARD_FIELDS.lane] || null,
     iterationPath: f['System.IterationPath'],
+    areaPath: f['System.AreaPath'],
     owner: f['System.AssignedTo']?.displayName || null,
     onBoard,
     url: editUrl(wi.id),
@@ -297,6 +314,7 @@ async function buildOverview() {
       const f = wi.fields;
       const chain = [];
       let feature = null;
+      let onBoard = false;
       let cur = wi;
       for (let d = 0; d < 6; d++) {
         const pid = parentOf(cur);
@@ -305,7 +323,10 @@ async function buildOverview() {
         chain.push({ id: cur.id, type: cur.fields['System.WorkItemType'], title: cur.fields['System.Title'], state: cur.fields['System.State'] });
         if (cur.fields['System.WorkItemType'] === 'Feature') { feature = cur; break; }
       }
-      if (feature && !features.has(feature.id)) features.set(feature.id, summarizeFeature(feature, board.has(feature.id)));
+      if (feature) {
+        onBoard = isFeatureOnBoard(feature, board);
+        if (!features.has(feature.id)) features.set(feature.id, summarizeFeature(feature, onBoard, featureColumns));
+      }
       const tags = (f['System.Tags'] || '').split(';').map((t) => t.trim()).filter(Boolean);
       const childIds = childrenOf(wi);
       return {
@@ -320,7 +341,7 @@ async function buildOverview() {
         parentId: parentOf(wi),
         chain,
         featureId: feature?.id || null,
-        onBoard: Boolean(feature && board.has(feature.id)),
+        onBoard,
         childCount: childIds.length,
         openChildCount: childIds.filter((c) => all.has(c) && !['Closed', 'Removed', 'Done'].includes(all.get(c).fields['System.State'])).length,
         childrenKnown: childIds.every((c) => all.has(c)),
@@ -331,9 +352,9 @@ async function buildOverview() {
     const missingBoard = boardIds.filter((id) => !features.has(id));
     if (missingBoard.length) stepActive('hierarchy', `Hydrating ${missingBoard.length} additional board Features…`);
     const boardFeatures = await getItems(missingBoard, {
-      fields: ['System.Id', 'System.Title', 'System.State', 'System.IterationPath', 'System.AssignedTo', BOARD_FIELDS.column, BOARD_FIELDS.lane],
+      fields: ['System.Id', 'System.Title', 'System.State', 'System.IterationPath', 'System.AreaPath', 'System.AssignedTo', BOARD_FIELDS.column, BOARD_FIELDS.lane],
     });
-    boardFeatures.forEach((wi) => features.set(wi.id, summarizeFeature(wi, true)));
+    boardFeatures.forEach((wi) => features.set(wi.id, summarizeFeature(wi, true, featureColumns)));
     nodes.clear();
     all.forEach((wi) => rememberNode(wi));
     stepDone('hierarchy', `${parentCount} parents linked · ${features.size} Features ready`, tHierarchy);

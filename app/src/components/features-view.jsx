@@ -59,6 +59,7 @@ const COLUMN_ICONS = {
   'Ready to flight': { icon: PackageCheck, tone: 'text-teal-600 dark:text-teal-300' },
   Flighting: { icon: Plane, tone: 'text-cyan-600 dark:text-cyan-300' },
   'Shipped/Closed': { icon: CircleCheckBig, tone: 'text-emerald-600 dark:text-emerald-300' },
+  Shipped: { icon: CircleCheckBig, tone: 'text-emerald-600 dark:text-emerald-300' },
 };
 
 function ColumnIcon({ column }) {
@@ -127,7 +128,10 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
               <ColumnSelect feature={feature} columns={data.featureColumns} onMove={onMoveFeature} disabled={pendingIds.has(feature.id)} />
             ) : (
               <Badge variant="outline" className="h-5 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
-                Off board · {feature.iterationPath.replace(/^SAN SA\\/, '')}
+                Off board ·{' '}
+                {feature.iterationPath?.startsWith(data.backlogPath) && feature.areaPath
+                  ? feature.areaPath
+                  : feature.iterationPath?.replace(/^SAN SA\\/, '') || feature.areaPath || 'outside SAN SA'}
               </Badge>
             )}
             {feature.onBoard && isInSprint(feature.iterationPath, data) && (
@@ -140,7 +144,7 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
               </Badge>
             )}
             {feature.lane && <span className="hidden text-[11px] text-muted-foreground lg:inline">{feature.lane}</span>}
-            {feature.state !== feature.column && <StatePill state={feature.state} />}
+            {feature.state && !feature.column?.includes(feature.state) && <StatePill state={feature.state} />}
             <a
               href={feature.url}
               target="_blank"

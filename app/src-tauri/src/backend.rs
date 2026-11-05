@@ -535,11 +535,44 @@ impl Backend {
             }))
             .collect::<Vec<_>>()))
     }
-    fn feature(&self, wi: &Value, on_board: bool) -> Value {
+    fn is_on_board(&self, wi: &Value, board_set: &HashSet<u64>) -> bool {
+        if board_set.contains(&id(wi)) {
+            return true;
+        }
         let f = &wi["fields"];
+        if text(&f["System.State"]) == "Removed" {
+            return false;
+        }
+        let area = text(&f["System.AreaPath"]);
+        let iter = text(&f["System.IterationPath"]);
+        let in_area = area == self.project
+            || area
+                .strip_prefix(&self.project)
+                .is_some_and(|rest| rest.starts_with('\\'));
+        let backlog = self.backlog();
+        let in_iter = iter == backlog
+            || iter
+                .strip_prefix(&backlog)
+                .is_some_and(|rest| rest.starts_with('\\'));
+        in_area && in_iter
+    }
+    fn feature(&self, wi: &Value, on_board: bool, columns: &Value) -> Value {
+        let f = &wi["fields"];
+        let state = text(&f["System.State"]);
+        let col_list = array(columns);
+        let boundary_col = col_list
+            .iter()
+            .find(|c| matches!(text(&c["type"]), "incoming" | "outgoing") && text(&c["state"]) == state)
+            .and_then(|c| c["name"].as_str());
+        let raw_col = f[COLUMN].as_str().filter(|s| !s.is_empty());
+        let fallback_col = col_list
+            .iter()
+            .find(|c| text(&c["state"]) == state)
+            .and_then(|c| c["name"].as_str());
+        let column = boundary_col.or(raw_col).or(fallback_col);
         json!({
             "id":wi["id"],"title":f["System.Title"],"state":f["System.State"],
-            "column":f[COLUMN],"lane":f[LANE],"iterationPath":f["System.IterationPath"],
+            "column":column,"lane":f[LANE],"iterationPath":f["System.IterationPath"],"areaPath":f["System.AreaPath"],
             "owner":f["System.AssignedTo"]["displayName"],"onBoard":on_board,"url":self.edit_url(id(wi))
         })
     }
@@ -694,14 +727,17 @@ impl Backend {
             let f = &wi["fields"];
             let mut chain = Vec::new();
             let mut feature_id = None;
+            let mut on_board = false;
             let mut cur = wi;
             for _ in 0..6 {
                 let Some(p) = parent(cur).and_then(|pid| all.get(&pid)) else { break; };
                 cur = p;
                 chain.push(json!({"id":cur["id"],"type":cur["fields"]["System.WorkItemType"],"title":cur["fields"]["System.Title"],"state":cur["fields"]["System.State"]}));
                 if cur["fields"]["System.WorkItemType"] == "Feature" {
-                    feature_id = Some(id(cur));
-                    features.entry(id(cur)).or_insert_with(|| self.feature(cur, board_set.contains(&id(cur))));
+                    let fid = id(cur);
+                    feature_id = Some(fid);
+                    on_board = self.is_on_board(cur, &board_set);
+                    features.entry(fid).or_insert_with(|| self.feature(cur, on_board, &columns));
                     break;
                 }
             }
@@ -712,7 +748,7 @@ impl Backend {
                 "iterationPath":f["System.IterationPath"],"tags":tags,
                 "weeksCarried":tags.iter().filter(|t| t.len()==8 && t.bytes().all(|b| b.is_ascii_digit())).count(),
                 "changedDate":f["System.ChangedDate"],"parentId":parent(wi),"chain":chain,"featureId":feature_id,
-                "onBoard":feature_id.is_some_and(|fid| board_set.contains(&fid)),"childCount":children.len(),
+                "onBoard":on_board,"childCount":children.len(),
                 "openChildCount":children.iter().filter(|cid| all.get(cid).is_some_and(|c| !matches!(text(&c["fields"]["System.State"]), "Closed"|"Removed"|"Done"))).count(),
                 "childrenKnown":children.iter().all(|cid| all.contains_key(cid)),"url":self.edit_url(id(wi))
             })
@@ -736,6 +772,7 @@ impl Backend {
                     "System.Title",
                     "System.State",
                     "System.IterationPath",
+                    "System.AreaPath",
                     "System.AssignedTo",
                     COLUMN,
                     LANE,
@@ -743,7 +780,7 @@ impl Backend {
             )
             .await?
         {
-            features.insert(id(&wi), self.feature(&wi, true));
+            features.insert(id(&wi), self.feature(&wi, true, &columns));
         }
         let mut features: Vec<Value> = features.into_values().collect();
         features.sort_by_key(id);
@@ -1558,6 +1595,41 @@ mod tests {
         assert!(positive_id("../1").is_err());
         assert!(required(&json!({"text":"  "}), "text").is_err());
         assert_eq!(enc("SAN SA"), "SAN%20SA");
+    }
+    #[tokio::test]
+    async fn closed_features_in_san_sa_sprint_stay_on_board() {
+        let server = MockServer::start().await;
+        let backend = mocked(&server);
+        let board_set = HashSet::new();
+        let columns = json!([
+            {"name":"New","state":"New","type":"incoming"},
+            {"name":"In Development","state":"Work in Progress","type":"inProgress"},
+            {"name":"Shipped/Closed","state":"Closed","type":"outgoing"}
+        ]);
+        let shipped = json!({
+            "id": 500,
+            "fields": {
+                "System.Title": "Shipped feature",
+                "System.State": "Closed",
+                "System.AreaPath": "Test Project\\Scaffolding",
+                "System.IterationPath": "Test Project\\Sprint"
+            }
+        });
+        assert!(backend.is_on_board(&shipped, &board_set));
+        let summarized = backend.feature(&shipped, true, &columns);
+        assert_eq!(summarized["onBoard"], true);
+        assert_eq!(summarized["column"], "Shipped/Closed");
+
+        let legacy = json!({
+            "id": 501,
+            "fields": {
+                "System.Title": "Legacy feature",
+                "System.State": "Active",
+                "System.AreaPath": "Test Project\\Scaffolding",
+                "System.IterationPath": "Test Project\\Month\\2026.02"
+            }
+        });
+        assert!(!backend.is_on_board(&legacy, &board_set));
     }
     #[tokio::test]
     async fn progress_endpoint_tracks_startup_steps() {
