@@ -22,8 +22,9 @@ Memory may only contain stable, non-ticket knowledge: org/project/team/board ide
 2. **ALWAYS commit and push after any change**: Whenever you add, update, or remove data (memory files, instructions, guides, etc.), immediately `git add`, `git commit`, and `git push`. Data must never be left uncommitted.
 3. **Keep it atomic**: Commit and push as soon as a unit of work is done so the remote is always the source of truth.
 4. **Desktop app (`app/`) local beta-test BEFORE production release**:
-   - Whenever you make changes to the planner app (`app/`), **always build and install it locally first** (`npm run desktop:build`, `Tickets planner_<version>_x64-setup.exe /S`, and relaunch `C:\Users\raulpo\AppData\Local\Tickets planner\tickets-planner.exe` via `Invoke-CimMethod -ClassName Win32_Process -MethodName Create`) so Raul can beta-test it on his machine.
-   - **Never push or trigger a production release on `raporpe/tickets-planner` until Raul has beta-tested the local build and explicitly asks to release/ship it.**
+   - For local development and beta-testing, use **`npm run desktop:dev` (`tauri dev`)**, which runs the native Tauri desktop window with Vite HMR for **sub-second (<50 ms) live reload** on every UI edit.
+   - `Cargo.toml` `[profile.release]` uses parallel codegen (`codegen-units = 16` default, `incremental = true`, no fat `lto = true`) so full builds use all CPU cores.
+   - **Never push or trigger a production release on `raporpe/tickets-planner` until Raul has beta-tested the changes locally and explicitly asks to release/ship.**
 
 ```bash
 git pull                          # before doing anything

@@ -43,5 +43,6 @@
 - **Azure DevOps MCP** may fail with OAuth 401; fall back to the `az` CLI / REST.
 - **Python** is not installed on this machine (Store stub only); use Node.js for scripts.
 - **Desktop app (`app/`) updates — local beta-test before production release**:
-  1. After any code change to `app/`, always build and install locally **first** (`npm run desktop:build`, silent NSIS `/S` install to `C:\Users\raulpo\AppData\Local\Tickets planner\tickets-planner.exe`, and relaunch via `Win32_Process.Create`) so Raul can beta-test the change locally.
-  2. **Do not** push or trigger a production release on `raporpe/tickets-planner` until Raul has verified the local build and asks to release it.
+  1. For local iteration and beta-testing, run **`npm run desktop:dev` (`tauri dev`)** so UI edits hot-reload in the native Tauri window in **<50 ms** without rebuilding.
+  2. `app/src-tauri/Cargo.toml` `[profile.release]` uses parallel codegen (`incremental = true`, no `codegen-units = 1` or fat `lto = true`) so release builds use all CPU cores.
+  3. **Do not** push or trigger a production release on `raporpe/tickets-planner` until Raul has verified the changes locally and asks to release.
