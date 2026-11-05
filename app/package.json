@@ -11,6 +11,7 @@
     "desktop:dev": "tauri dev",
     "dev:web": "vite",
     "desktop:build": "tauri build",
+    "desktop:fast": "vite build && cargo build --release --manifest-path src-tauri/Cargo.toml",
     "desktop:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"
   },
