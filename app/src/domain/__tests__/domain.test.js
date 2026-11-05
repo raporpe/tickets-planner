@@ -65,8 +65,8 @@ describe('priority-scale domain', () => {
 
   it('maps priority levels 0..4 to distinct tones and defaults unknown to P3', () => {
     assert.match(priorityTone(0), /rose/);
-    assert.match(priorityTone(1), /orange/);
-    assert.match(priorityTone(2), /amber/);
+    assert.match(priorityTone(1), /amber/);
+    assert.match(priorityTone(2), /bg-muted/);
     assert.equal(priorityTone(99), priorityTone(3));
     assert.equal(priorityTone(undefined), priorityTone(3));
   });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight } from 'lucide-react';
 import 'piixpal';
 import { cn } from '@/lib/utils';
@@ -89,41 +89,77 @@ function HygieneAllClear({ openCount, active }) {
 
 function CollapsibleInfoSection({ section, data, features, pendingIds, reasonsById, onUpdate }) {
   const [open, setOpen] = useState(false);
+  const [rendered, setRendered] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const sectionRef = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setRendered(true);
+      const raf = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setExpanded(true);
+          setTimeout(() => {
+            sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 90);
+        });
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    setExpanded(false);
+    const t = setTimeout(() => setRendered(false), 240);
+    return () => clearTimeout(t);
+  }, [open]);
+
   return (
-    <section className="overflow-hidden rounded-lg border bg-card/60">
+    <section ref={sectionRef} className="overflow-hidden rounded-lg border bg-card/60 transition-colors duration-200">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
-        <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform duration-150', open && 'rotate-90')} />
-        <h3 className="text-xs font-semibold text-muted-foreground">{section.title}</h3>
+        <ChevronRight
+          className={cn(
+            'size-4 shrink-0 text-muted-foreground transition-transform duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+            open && 'rotate-90 text-foreground',
+          )}
+        />
+        <h3 className={cn('text-xs font-semibold transition-colors', open ? 'text-foreground' : 'text-muted-foreground')}>{section.title}</h3>
         <span className="rounded-full bg-muted px-1.5 py-px text-[11px] font-medium text-muted-foreground tabular-nums">
           {section.items.length}
         </span>
         <span className="ml-1 truncate text-xs text-muted-foreground">{section.hint}</span>
       </button>
-      {open && (
-        <div className="border-t bg-card">
-          {section.items.map((item) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              data={data}
-              features={features}
-              pending={pendingIds.has(item.id)}
-              onUpdate={onUpdate}
-              extra={
-                <span className="text-muted-foreground">
-                  {(reasonsById.get(item.id) || [])
-                    .filter((r) => section.keys.includes(r.key))
-                    .map((r) => r.label)
-                    .join(', ')}
-                </span>
-              }
-            />
-          ))}
+      {rendered && (
+        <div
+          className={cn(
+            'grid transition-[grid-template-rows,opacity] duration-240 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+            expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="border-t bg-card">
+              {section.items.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  data={data}
+                  features={features}
+                  pending={pendingIds.has(item.id)}
+                  onUpdate={onUpdate}
+                  extra={
+                    <span className="text-muted-foreground">
+                      {(reasonsById.get(item.id) || [])
+                        .filter((r) => section.keys.includes(r.key))
+                        .map((r) => r.label)
+                        .join(', ')}
+                    </span>
+                  }
+                />
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </section>
