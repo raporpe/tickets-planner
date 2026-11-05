@@ -745,6 +745,7 @@ impl Backend {
             let children = children(wi);
             json!({
                 "id":wi["id"],"type":f["System.WorkItemType"],"title":f["System.Title"],"state":f["System.State"],
+                "priority":f["Microsoft.VSTS.Common.Priority"],
                 "iterationPath":f["System.IterationPath"],"tags":tags,
                 "weeksCarried":tags.iter().filter(|t| t.len()==8 && t.bytes().all(|b| b.is_ascii_digit())).count(),
                 "changedDate":f["System.ChangedDate"],"parentId":parent(wi),"chain":chain,"featureId":feature_id,
@@ -978,6 +979,12 @@ impl Backend {
         if let Some(state) = body["state"].as_str().filter(|s| !s.is_empty()) {
             add(&mut ops, "/fields/System.State", state);
         }
+        if let Some(priority) = body.get("priority").and_then(Value::as_u64) {
+            if !(1..=4).contains(&priority) {
+                return Err(Error::new(400, "Priority must be between 1 and 4"));
+            }
+            add(&mut ops, "/fields/Microsoft.VSTS.Common.Priority", priority);
+        }
         if let Some(tag_list) = body["tags"].as_array() {
             let mut seen = HashSet::new();
             let mut cleaned = Vec::new();
@@ -1042,7 +1049,7 @@ impl Backend {
             self.nodes.lock().unwrap().remove(&id);
         }
         Ok(
-            json!({"id":wi["id"],"rev":wi["rev"],"title":wi["fields"]["System.Title"],"state":wi["fields"]["System.State"],"iterationPath":wi["fields"]["System.IterationPath"],"tags":tags(&wi["fields"])}),
+            json!({"id":wi["id"],"rev":wi["rev"],"title":wi["fields"]["System.Title"],"state":wi["fields"]["System.State"],"priority":wi["fields"]["Microsoft.VSTS.Common.Priority"],"iterationPath":wi["fields"]["System.IterationPath"],"tags":tags(&wi["fields"])}),
         )
     }
 

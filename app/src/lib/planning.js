@@ -17,6 +17,21 @@ const STATE_TONE = {
 };
 export const stateTone = (s) => STATE_TONE[s] || STATE_TONE.New;
 
+export const PRIORITIES = [
+  { value: 1, label: 'P1', hint: 'Critical' },
+  { value: 2, label: 'P2', hint: 'High' },
+  { value: 3, label: 'P3', hint: 'Medium' },
+  { value: 4, label: 'P4', hint: 'Low' },
+];
+
+const PRIORITY_TONE = {
+  1: 'bg-rose-50 text-rose-800 ring-rose-200/80 dark:bg-rose-300/10 dark:text-rose-200 dark:ring-rose-300/25',
+  2: 'bg-amber-50 text-amber-800 ring-amber-200/80 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25',
+  3: 'bg-muted text-muted-foreground ring-border',
+  4: 'bg-muted/70 text-muted-foreground/80 ring-border/80',
+};
+export const priorityTone = (p) => PRIORITY_TONE[p] || PRIORITY_TONE[3];
+
 // Each type owns a pastel family: `text` for the label, `dot` for its marker, `tint` for a highlighted row.
 const TYPE_STYLE = {
   Epic: { text: 'text-violet-700 dark:text-violet-300', dot: 'bg-violet-300', tint: 'bg-violet-50 dark:bg-violet-300/10' },

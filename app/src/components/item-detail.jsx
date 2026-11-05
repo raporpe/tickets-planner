@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
-import { FeaturePicker, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
+import { FeaturePicker, PrioritySelect, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { RichEditor, RichView } from '@/components/rich-text';
 import { HierarchyTree, MissingParent } from '@/components/hierarchy';
 import { api } from '@/api';
@@ -67,6 +67,7 @@ function seedDetail(id, data, features) {
       type: item.type,
       title: item.title,
       state: item.state,
+      priority: item.priority,
       iterationPath: item.iterationPath,
       areaPath: data?.project || 'SAN SA',
       tags: item.tags || [],
@@ -716,17 +717,24 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     }
   }, [id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep state/sprint/tags in sync with board edits.
+  // Keep state/priority/sprint/tags in sync with board edits.
   useEffect(() => {
     if (
       item &&
       detail &&
       item.id === detail.id &&
       (item.state !== detail.state ||
+        item.priority !== detail.priority ||
         item.iterationPath !== detail.iterationPath ||
         JSON.stringify(item.tags || []) !== JSON.stringify(detail.tags || []))
     ) {
-      setDetail((d) => ({ ...d, state: item.state, iterationPath: item.iterationPath, tags: item.tags || d.tags }));
+      setDetail((d) => ({
+        ...d,
+        state: item.state,
+        priority: item.priority ?? d.priority,
+        iterationPath: item.iterationPath,
+        tags: item.tags || d.tags,
+      }));
     }
   }, [item, detail, setDetail]);
 
@@ -851,6 +859,23 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     const current = (detail.tags || []).filter((t) => !isSprintUnplannedTag(t));
     const next = checked ? [...current, SPRINT_UNPLANNED_TAG] : current;
     await saveTags(next, checked ? `#${detail.id} marked ${SPRINT_UNPLANNED_TAG}` : `#${detail.id} unmarked ${SPRINT_UNPLANNED_TAG}`);
+  }
+
+  async function savePriority(priority) {
+    const previous = detail.priority;
+    setDetail((d) => ({ ...d, priority }));
+    if (item) {
+      await onUpdate(item, { priority });
+      return;
+    }
+    try {
+      const r = await saveFields({ priority }, (fresh) => fresh.priority === previous);
+      setDetail((d) => ({ ...d, priority: r.priority ?? priority, rev: r.rev }));
+      toast.success(`#${detail.id} priority → P${priority}`);
+    } catch (e) {
+      setDetail((d) => ({ ...d, priority: previous }));
+      toast.error(`#${detail.id}: priority not saved`, { description: e.message });
+    }
   }
 
   async function saveTitle(title) {
@@ -978,11 +1003,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                 ) : (
                   <StatePill state={detail.state} />
                 )}
-                {detail.priority != null && (
-                  <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground tabular-nums" title={`Priority ${detail.priority}`}>
-                    P{detail.priority}
-                  </span>
-                )}
+                <PrioritySelect priority={detail.priority} onChange={savePriority} disabled={pending} />
                 {pending && (
                   <span role="status" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <Loader2 className="size-3 animate-spin" /> Saving…
