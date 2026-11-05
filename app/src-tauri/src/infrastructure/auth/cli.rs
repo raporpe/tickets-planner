@@ -7,6 +7,7 @@ use tokio::{process::Command, time::Duration};
 
 pub const RESOURCE: &str = "499b84ac-1321-427f-aa17-267ca6975798";
 pub const CLIENT_ID: &str = "04b07795-8ddb-461a-bbee-02f9e1bf7b46";
+pub const DEFAULT_TENANT: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
 
 pub struct Token {
     pub access: String,
@@ -35,6 +36,10 @@ pub fn parse_token(value: &Value, old_refresh: Option<String>) -> Result<Token> 
 }
 
 pub async fn cli_token() -> Result<Token> {
+    let tenant = std::env::var("AZURE_TENANT_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_TENANT.into());
     #[cfg(windows)]
     let mut command = {
         let mut command = Command::new("cmd.exe");
@@ -46,6 +51,8 @@ pub async fn cli_token() -> Result<Token> {
             "get-access-token",
             "--resource",
             RESOURCE,
+            "--tenant",
+            &tenant,
             "--output",
             "json",
         ]);
@@ -64,6 +71,8 @@ pub async fn cli_token() -> Result<Token> {
             "get-access-token",
             "--resource",
             RESOURCE,
+            "--tenant",
+            &tenant,
             "--output",
             "json",
         ]);

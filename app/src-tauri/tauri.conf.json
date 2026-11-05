@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Tickets planner",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.raulpo.tickets-planner",
   "build": {
     "beforeDevCommand": "npm run dev:web",
@@ -39,7 +39,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBOTYzMjE3OTBCRTY3NzAKUldSd1o3NlFGektXZWxFMmJsb1VzTWJ1bnhKTktZR0FkdytidE9ubG5YMkhlSjB2Y0pBa0w5UWkK",
       "endpoints": [
-        "https://github.com/raporpe/tickets-planner/releases/latest/download/latest.json"
+        "https://stticketsplanner9284.blob.core.windows.net/releases/latest.json"
       ],
       "windows": {
         "installMode": "passive"
