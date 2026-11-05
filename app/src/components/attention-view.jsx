@@ -43,10 +43,10 @@ const HYGIENE_CHECKS = [
   },
 ];
 
-function HygieneAllClear({ openCount }) {
+function HygieneAllClear({ openCount, active }) {
   return (
     <section aria-label="All hygiene checks passing" className="mx-auto my-auto flex w-full max-w-2xl flex-col items-center py-6">
-      <div className="relative flex size-14 items-center justify-center">
+      <div key={active ? 'active' : 'inactive'} className="relative flex size-14 items-center justify-center">
         <span
           aria-hidden
           className="animate-hygiene-ring pointer-events-none absolute inset-0 rounded-full border-2 border-emerald-500/40 motion-reduce:hidden dark:border-emerald-400/35"
@@ -70,7 +70,7 @@ function HygieneAllClear({ openCount }) {
       </p>
       <p className="mt-1 text-xs font-semibold text-muted-foreground">Sapphiry is happy.</p>
       <ul className="relative mt-12 w-full divide-y divide-border/60 rounded-xl border bg-card px-4 py-1">
-        <piix-pal pal="boing" scale="3" hue="205" />
+        {active && <piix-pal pal="boing" scale="2" hue="205" />}
         {HYGIENE_CHECKS.map((check) => (
           <li key={check.title} className="flex items-start gap-3 py-2.5 text-left">
             <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300">
@@ -130,7 +130,7 @@ function CollapsibleInfoSection({ section, data, features, pendingIds, reasonsBy
   );
 }
 
-export function AttentionView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
+export function AttentionView({ data, items, features, pendingIds, reasonsById, onUpdate, active = true }) {
   const sprintFeatures = featuresInSprint(items, features, data);
   const sections = GROUPS.map((g) => ({
     ...g,
@@ -144,7 +144,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 pb-4">
-      {clean && <HygieneAllClear openCount={openCount} />}
+      {clean && <HygieneAllClear openCount={openCount} active={active} />}
       {sprintFeatures.length > 0 && (
         <section>
           <div className="mb-2 flex items-baseline gap-2">

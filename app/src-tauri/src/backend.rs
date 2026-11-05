@@ -599,6 +599,36 @@ impl Backend {
             tokio::try_join!(fetch("Task"), fetch("Bug"), fetch("User Story"))?;
         Ok(json!({"Task":task,"Bug":bug,"User Story":story}))
     }
+    async fn settings(&self) -> Value {
+        match self
+            .get("/_apis/Settings/Entries/me/TicketsPlanner?api-version=7.1-preview.1")
+            .await
+        {
+            Ok(v) if v["value"].is_object() => v["value"].clone(),
+            _ => json!({}),
+        }
+    }
+    async fn save_settings(&self, body: &Value) -> Result<Value> {
+        let mut entries = Map::new();
+        for key in ["layout", "notes", "prefs"] {
+            if let Some(val) = body.get(key) {
+                if !val.is_null() {
+                    entries.insert(format!("TicketsPlanner/{key}"), val.clone());
+                }
+            }
+        }
+        if entries.is_empty() {
+            return Ok(json!({"ok":true,"unchanged":true}));
+        }
+        self.ado(
+            "PATCH",
+            "/_apis/Settings/Entries/me?api-version=7.1-preview.1",
+            Some(Value::Object(entries)),
+            false,
+        )
+        .await?;
+        Ok(json!({"ok":true}))
+    }
 
     async fn overview(&self) -> Result<Value> {
         self.begin_progress(true);
@@ -647,12 +677,14 @@ impl Backend {
         let board_flow = async {
             let t_board = Instant::now();
             self.step_active("board", "Fetching Features board columns & state rules…");
-            let (board, me, columns, states) = tokio::try_join!(
+            let (board, me, columns, states, settings) = tokio::join!(
                 self.get(&board_path),
                 self.get("/_apis/connectionData"),
                 self.feature_columns(),
-                self.states()
-            )?;
+                self.states(),
+                self.settings()
+            );
+            let (board, me, columns, states) = (board?, me?, columns?, states?);
             let board_count = array(&board["workItems"]).len();
             let col_count = array(&columns).len();
             self.step_done(
@@ -660,9 +692,9 @@ impl Backend {
                 format!("{board_count} board Features · {col_count} columns"),
                 t_board,
             );
-            Ok::<_, Error>((board, me, columns, states))
+            Ok::<_, Error>((board, me, columns, states, settings))
         };
-        let ((sprints, q), (board, me, columns, states)) =
+        let ((sprints, q), (board, me, columns, states, settings)) =
             tokio::try_join!(sprint_flow, board_flow)?;
         let ids: Vec<u64> = array(&q["workItems"]).iter().map(id).collect();
         let t_items = Instant::now();
@@ -806,7 +838,7 @@ impl Backend {
         Ok(json!({
             "me":{"name":me["authenticatedUser"]["providerDisplayName"],"id":me["authenticatedUser"]["id"]},
             "org":self.org,"project":self.project,"backlogPath":self.backlog(),"sprints":sprints,"features":features,
-            "featureColumns":columns,"items":items,"states":states,"generatedAt":Utc::now().to_rfc3339()
+            "featureColumns":columns,"items":items,"states":states,"settings":settings,"generatedAt":Utc::now().to_rfc3339()
         }))
     }
 
@@ -1198,6 +1230,8 @@ impl Backend {
             ("POST", ["auth", "device"]) => self.auth.start_device().await,
             ("GET", ["auth", "device"]) => Ok(self.auth.poll_device().await),
             ("GET", ["overview"]) => self.overview().await,
+            ("GET", ["settings"]) => Ok(self.settings().await),
+            ("PATCH", ["settings"]) => self.save_settings(&body).await,
             ("GET", ["sprints"]) => self.sprints().await,
             ("PATCH", ["features", work_id, "column"]) => {
                 let id = positive_id(work_id)?;

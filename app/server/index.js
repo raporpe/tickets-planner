@@ -268,10 +268,11 @@ async function buildOverview() {
       const tBoard = Date.now();
       stepActive('board', 'Fetching Features board columns & state rules…');
       const states = {};
-      const [boardIds, me, featureColumns] = await Promise.all([
+      const [boardIds, me, featureColumns, settings] = await Promise.all([
         getBoardFeatureIds(),
         ado('/_apis/connectionData'),
         getFeatureColumns(),
+        ado('/_apis/Settings/Entries/me/TicketsPlanner?api-version=7.1-preview.1').then((r) => r?.value || {}).catch(() => ({})),
         Promise.all(
           WORK_TYPES.map(async (t) => {
             const r = await ado(`/${P}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
@@ -280,10 +281,10 @@ async function buildOverview() {
         ),
       ]);
       stepDone('board', `${boardIds.length} board Features · ${featureColumns.length} columns`, tBoard);
-      return [boardIds, me, featureColumns, states];
+      return [boardIds, me, featureColumns, states, settings];
     })();
 
-    const [[sprints, q], [boardIds, me, featureColumns, states]] = await Promise.all([sprintFlow, boardFlow]);
+    const [[sprints, q], [boardIds, me, featureColumns, states, settings]] = await Promise.all([sprintFlow, boardFlow]);
     const board = new Set(boardIds);
     const all = new Map();
     const ids = q.workItems.map((w) => w.id);
@@ -370,6 +371,7 @@ async function buildOverview() {
       featureColumns,
       items,
       states,
+      settings,
       generatedAt: new Date().toISOString(),
     };
   } finally {
@@ -447,6 +449,22 @@ app.post('/api/auth/device', route(async () => {
 app.get('/api/auth/device', route(async () => device || { status: 'idle' }));
 
 app.get('/api/overview', route(() => buildOverview()));
+
+app.get('/api/settings', route(async () => {
+  const r = await ado('/_apis/Settings/Entries/me/TicketsPlanner?api-version=7.1-preview.1').catch(() => null);
+  return r?.value || {};
+}));
+
+app.patch('/api/settings', route(async (req) => {
+  const b = req.body || {};
+  const entries = {};
+  for (const key of ['layout', 'notes', 'prefs']) {
+    if (b[key] != null) entries[`TicketsPlanner/${key}`] = b[key];
+  }
+  if (!Object.keys(entries).length) return { ok: true, unchanged: true };
+  await ado('/_apis/Settings/Entries/me?api-version=7.1-preview.1', { method: 'PATCH', body: entries });
+  return { ok: true };
+}));
 
 // Move a Feature to another column of the team's Features board. The column decides the state.
 app.patch('/api/features/:id/column', route(async (req) => {
