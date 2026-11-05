@@ -978,6 +978,23 @@ impl Backend {
         if let Some(state) = body["state"].as_str().filter(|s| !s.is_empty()) {
             add(&mut ops, "/fields/System.State", state);
         }
+        if let Some(tag_list) = body["tags"].as_array() {
+            let mut seen = HashSet::new();
+            let mut cleaned = Vec::new();
+            for raw in tag_list {
+                for part in text(raw).split(';') {
+                    let t = part.trim();
+                    if !t.is_empty() && seen.insert(t.to_lowercase()) {
+                        cleaned.push(t.to_owned());
+                    }
+                }
+            }
+            ops.push(json!({
+                "op": "replace",
+                "path": "/fields/System.Tags",
+                "value": cleaned.join("; ")
+            }));
+        }
         if body["unassign"] == true {
             add(&mut ops, "/fields/System.AssignedTo", "");
         }
@@ -1025,7 +1042,7 @@ impl Backend {
             self.nodes.lock().unwrap().remove(&id);
         }
         Ok(
-            json!({"id":wi["id"],"rev":wi["rev"],"title":wi["fields"]["System.Title"],"state":wi["fields"]["System.State"],"iterationPath":wi["fields"]["System.IterationPath"]}),
+            json!({"id":wi["id"],"rev":wi["rev"],"title":wi["fields"]["System.Title"],"state":wi["fields"]["System.State"],"iterationPath":wi["fields"]["System.IterationPath"],"tags":tags(&wi["fields"])}),
         )
     }
 
@@ -1409,18 +1426,21 @@ mod tests {
             .and(body_json(json!([
                 {"op":"test","path":"/rev","value":3},
                 {"op":"add","path":"/fields/System.Description","value":"# Updated"},
-                {"op":"add","path":"/multilineFieldsFormat/System.Description","value":"Markdown"}
+                {"op":"add","path":"/multilineFieldsFormat/System.Description","value":"Markdown"},
+                {"op":"replace","path":"/fields/System.Tags","value":"FY26 C5; Backend; Sprint-Unplanned"}
             ])))
             .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({"id":10,"rev":4,"fields":{}})),
+                ResponseTemplate::new(200).set_body_json(json!({"id":10,"rev":4,"fields":{"System.Tags":"FY26 C5; Backend; Sprint-Unplanned"}})),
             )
             .expect(1)
             .mount(&server)
             .await;
         let result=mocked(&server).request("PATCH","/workitems/10",json!({
-            "rev":3,"fields":{"System.Description":"# Updated"},"markdown":["System.Description"]
+            "rev":3,"fields":{"System.Description":"# Updated"},"markdown":["System.Description"],
+            "tags":["FY26 C5","Backend","Sprint-Unplanned"]
         })).await        .unwrap();
         assert_eq!(result["rev"], 4);
+        assert_eq!(result["tags"], json!(["FY26 C5", "Backend", "Sprint-Unplanned"]));
         let requests = server.received_requests().await.unwrap();
         let content_types: Vec<_> = requests[0].headers.get_all("content-type").iter().collect();
         assert_eq!(

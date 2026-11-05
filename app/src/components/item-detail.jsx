@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, RefreshCw, Unlink } from 'lucide-react';
+import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, Unlink, X, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { FeaturePicker, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
@@ -10,6 +11,7 @@ import { RichEditor, RichView } from '@/components/rich-text';
 import { HierarchyTree, MissingParent } from '@/components/hierarchy';
 import { api } from '@/api';
 import { useDetail } from '@/lib/detail';
+import { CURRENT_CYCLE_TAG, hasCycleTag, hasPlatformTag, isSprintUnplanned, isSprintUnplannedTag, PLATFORM_TAGS, SPRINT_UNPLANNED_TAG } from '@/lib/planning';
 import { isTyping, overlayOpen, runAction, takeQueued, TICKET_ACTIONS, useAction } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -323,6 +325,127 @@ function SectionHeader({ children, action }) {
   );
 }
 
+function TagsEditor({ detail, disabled, onSaveTags }) {
+  const [draft, setDraft] = useState('');
+  const tags = detail.tags || [];
+  const lower = new Set(tags.map((t) => t.toLowerCase()));
+  const missingCycle = !hasCycleTag(detail);
+  const missingPlatform = !hasPlatformTag(detail);
+  const quickPlatforms = PLATFORM_TAGS.filter((p) => !lower.has(p.toLowerCase()));
+
+  async function addTags(raw) {
+    const incoming = String(raw || '')
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s && !isSprintUnplannedTag(s) && !lower.has(s.toLowerCase()));
+    if (!incoming.length) return;
+    await onSaveTags([...tags, ...incoming]);
+  }
+
+  async function removeTag(target) {
+    if (isSprintUnplannedTag(target)) return;
+    await onSaveTags(tags.filter((t) => t !== target));
+  }
+
+  return (
+    <div className="col-span-full">
+      <div className="flex items-center justify-between gap-2">
+        <dt className="text-xs text-muted-foreground">Tags</dt>
+        {(missingCycle || missingPlatform) && (
+          <span className="text-[11px] font-medium text-amber-800 dark:text-amber-200">
+            Missing:{' '}
+            {[missingCycle && CURRENT_CYCLE_TAG, missingPlatform && 'platform tag'].filter(Boolean).join(' + ')}
+          </span>
+        )}
+      </div>
+      <dd className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {tags.map((t) =>
+          isSprintUnplannedTag(t) ? (
+            <span
+              key={t}
+              title="Controlled by the Sprint-Unplanned checkbox above"
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-xs font-medium text-amber-900 select-none dark:border-amber-400/35 dark:bg-amber-400/15 dark:text-amber-200"
+            >
+              <Zap className="size-3 fill-current" />
+              {t}
+            </span>
+          ) : (
+            <span key={t} className="inline-flex h-6 items-center gap-1 rounded-md bg-muted pr-1 pl-2 text-xs">
+              <span>{t}</span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => removeTag(t)}
+                aria-label={`Remove tag ${t}`}
+                title={`Remove ${t}`}
+                className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ),
+        )}
+        {missingCycle && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => addTags(CURRENT_CYCLE_TAG)}
+            title={`Add cycle tag ${CURRENT_CYCLE_TAG}`}
+            className="inline-flex h-6 items-center gap-1 rounded-md border border-dashed border-amber-400/80 bg-amber-50/70 px-2 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100/80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20"
+          >
+            <Plus className="size-3" />
+            {CURRENT_CYCLE_TAG}
+          </button>
+        )}
+        {quickPlatforms.map((p) => (
+          <button
+            key={p}
+            type="button"
+            disabled={disabled}
+            onClick={() => addTags(p)}
+            title={`Add platform tag ${p}`}
+            className={cn(
+              'inline-flex h-6 items-center gap-1 rounded-md border border-dashed px-2 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40',
+              missingPlatform
+                ? 'border-amber-400/80 bg-amber-50/70 font-medium text-amber-900 hover:bg-amber-100/80 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20'
+                : 'border-border bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+            )}
+          >
+            <Plus className="size-3" />
+            {p}
+          </button>
+        ))}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const v = draft.trim();
+            if (!v || disabled) return;
+            setDraft('');
+            await addTags(v);
+          }}
+          className="inline-flex items-center"
+        >
+          <input
+            value={draft}
+            disabled={disabled}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                if (draft) setDraft('');
+                else e.currentTarget.blur();
+              }
+            }}
+            placeholder="+ Add tag…"
+            aria-label="Add custom tag"
+            className="h-6 w-28 rounded-md border border-input bg-transparent px-2 text-xs transition-[width,border-color] placeholder:text-muted-foreground focus:w-36 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+          />
+        </form>
+      </dd>
+    </div>
+  );
+}
+
 function TitleEditor({ title, onSave, onEditingChange }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(title);
@@ -593,10 +716,17 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     }
   }, [id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep state/sprint in the header in sync with board edits.
+  // Keep state/sprint/tags in sync with board edits.
   useEffect(() => {
-    if (item && detail && item.id === detail.id && (item.state !== detail.state || item.iterationPath !== detail.iterationPath)) {
-      setDetail((d) => ({ ...d, state: item.state, iterationPath: item.iterationPath }));
+    if (
+      item &&
+      detail &&
+      item.id === detail.id &&
+      (item.state !== detail.state ||
+        item.iterationPath !== detail.iterationPath ||
+        JSON.stringify(item.tags || []) !== JSON.stringify(detail.tags || []))
+    ) {
+      setDetail((d) => ({ ...d, state: item.state, iterationPath: item.iterationPath, tags: item.tags || d.tags }));
     }
   }, [item, detail, setDetail]);
 
@@ -693,6 +823,36 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     }
   }
 
+  const [savingTags, setSavingTags] = useState(false);
+
+  async function saveTags(nextTags, toastMessage) {
+    const previousTags = detail.tags || [];
+    setSavingTags(true);
+    setDetail((d) => ({ ...d, tags: nextTags }));
+    onItemPatched(detail.id, { tags: nextTags, weeksCarried: nextTags.filter((t) => /^\d{8}$/.test(t)).length });
+    try {
+      const r = await saveFields({ tags: nextTags }, (fresh) => JSON.stringify(fresh.tags || []) === JSON.stringify(previousTags));
+      const saved = r.tags || nextTags;
+      setDetail((d) => ({ ...d, tags: saved, rev: r.rev }));
+      onItemPatched(detail.id, { tags: saved, weeksCarried: saved.filter((t) => /^\d{8}$/.test(t)).length });
+      toast.success(toastMessage || `#${detail.id} tags updated`);
+      return true;
+    } catch (e) {
+      setDetail((d) => ({ ...d, tags: previousTags }));
+      onItemPatched(detail.id, { tags: previousTags, weeksCarried: previousTags.filter((t) => /^\d{8}$/.test(t)).length });
+      toast.error(`#${detail.id}: tags not saved`, { description: e.message });
+      return false;
+    } finally {
+      setSavingTags(false);
+    }
+  }
+
+  async function toggleUnplanned(checked) {
+    const current = (detail.tags || []).filter((t) => !isSprintUnplannedTag(t));
+    const next = checked ? [...current, SPRINT_UNPLANNED_TAG] : current;
+    await saveTags(next, checked ? `#${detail.id} marked ${SPRINT_UNPLANNED_TAG}` : `#${detail.id} unmarked ${SPRINT_UNPLANNED_TAG}`);
+  }
+
   async function saveTitle(title) {
     try {
       const r = await saveFields({ title }, (fresh) => fresh.title === detail.title);
@@ -767,6 +927,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   }
 
   const pending = item ? pendingIds.has(item.id) : false;
+  const unplanned = isSprintUnplanned(detail);
 
   return (
     <Sheet open={!!id} onOpenChange={(o) => !o && requestClose()}>
@@ -842,17 +1003,35 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
               <SheetDescription className="sr-only">
                 {detail.type} {detail.id} details
               </SheetDescription>
-              {item && (
-                <div className="-ml-2 flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {item && (
                   <SprintSelect
                     item={item}
                     data={data}
                     onChange={(p) => onUpdate(item, p)}
                     disabled={pending}
-                    className="border-0 bg-transparent px-2 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground dark:bg-transparent dark:hover:bg-accent"
+                    className="-ml-2 border-0 bg-transparent px-2 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground dark:bg-transparent dark:hover:bg-accent"
                   />
-                </div>
-              )}
+                )}
+                <label
+                  className={cn(
+                    'inline-flex h-7 cursor-pointer items-center gap-2 rounded-md border px-2.5 text-xs font-medium transition-colors select-none',
+                    unplanned
+                      ? 'border-amber-300 bg-amber-50/95 text-amber-900 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-200'
+                      : 'border-border/80 bg-muted/40 text-muted-foreground hover:bg-accent hover:text-foreground',
+                    (pending || savingTags) && 'pointer-events-none opacity-60',
+                  )}
+                  title="Mark if brought into an active sprint after original sprint planning (adds Sprint-Unplanned tag)"
+                >
+                  <Checkbox
+                    checked={unplanned}
+                    disabled={pending || savingTags}
+                    onCheckedChange={(checked) => toggleUnplanned(!!checked)}
+                  />
+                  <Zap className={cn('size-3', unplanned ? 'fill-current text-amber-600 dark:text-amber-300' : 'text-muted-foreground')} />
+                  <span>Sprint-Unplanned</span>
+                </label>
+              </div>
             </header>
 
             {confirming && (
@@ -888,18 +1067,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                     <Meta label="Last changed">
                       <When date={detail.changedDate} by={who(detail.changedBy)} />
                     </Meta>
-                    {detail.tags.length > 0 && (
-                      <div className="col-span-full">
-                        <dt className="text-xs text-muted-foreground">Tags</dt>
-                        <dd className="mt-1 flex flex-wrap gap-1">
-                          {detail.tags.map((t) => (
-                            <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                              {t}
-                            </span>
-                          ))}
-                        </dd>
-                      </div>
-                    )}
+                    <TagsEditor detail={detail} disabled={pending || savingTags} onSaveTags={(next) => saveTags(next)} />
                   </dl>
                 </section>
 

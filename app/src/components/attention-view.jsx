@@ -7,6 +7,7 @@ import { featuresInSprint } from '@/lib/planning';
 const GROUPS = [
   { keys: ['not-sprintable'], title: 'Stories in a sprint', hint: 'Stories belong in SAN SA\\Sprint, not in a sprint. Move them back to the Backlog.' },
   { keys: ['no-feature', 'off-board'], title: 'Not under a board Feature', hint: 'Pick a board Feature so the work shows on aka.ms/sa-kanban.' },
+  { keys: ['missing-cycle', 'missing-platform'], title: 'Missing compliance tags', hint: 'Every ticket needs the current cycle tag (FY26 C5) and a platform tag (iOS, Android, Backend, MiniApps).' },
   { keys: ['legacy-iteration', 'past-sprint'], title: 'Outside the sprint structure', hint: 'Move to the backlog or a sprint under SAN SA\\Sprint.' },
   { keys: ['story-done'], title: 'Stories whose children are all closed', hint: 'Close the Story if the work is done.' },
   { keys: ['idle'], title: 'Gone quiet', hint: 'No change in Azure DevOps for a week or more. Update the state, add a comment, or move it out of the sprint.' },

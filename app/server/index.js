@@ -482,6 +482,20 @@ app.patch('/api/workitems/:id', route(async (req) => {
     ops.push({ op: 'add', path: '/fields/System.IterationPath', value: b.iterationPath });
   }
   if (b.state) ops.push({ op: 'add', path: '/fields/System.State', value: b.state });
+  if (Array.isArray(b.tags)) {
+    const seen = new Set();
+    const cleaned = [];
+    for (const raw of b.tags) {
+      for (const part of String(raw ?? '').split(';')) {
+        const t = part.trim();
+        if (t && !seen.has(t.toLowerCase())) {
+          seen.add(t.toLowerCase());
+          cleaned.push(t);
+        }
+      }
+    }
+    ops.push({ op: 'replace', path: '/fields/System.Tags', value: cleaned.join('; ') });
+  }
   if (b.unassign) ops.push({ op: 'add', path: '/fields/System.AssignedTo', value: '' });
   if ('parentId' in b) {
     const wi = await ado(`/_apis/wit/workitems/${id}?$expand=relations&api-version=7.1`);
@@ -509,6 +523,7 @@ app.patch('/api/workitems/:id', route(async (req) => {
     title: wi.fields['System.Title'],
     state: wi.fields['System.State'],
     iterationPath: wi.fields['System.IterationPath'],
+    tags: (wi.fields['System.Tags'] || '').split(';').map((t) => t.trim()).filter(Boolean),
   };
 }));
 

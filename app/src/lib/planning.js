@@ -88,6 +88,18 @@ export const SPRINT_TYPES = ['Task', 'Bug'];
 export const canBeInSprint = (type) => SPRINT_TYPES.includes(type);
 export const isInSprint = (path, data) => path.startsWith(`${data.backlogPath}\\`);
 
+export const CURRENT_CYCLE_TAG = 'FY26 C5';
+export const PLATFORM_TAGS = ['iOS', 'Android', 'Backend', 'MiniApps'];
+export const SPRINT_UNPLANNED_TAG = 'Sprint-Unplanned';
+
+export const isCycleTag = (t) => /^FY\d{2}\s*C\d+$/i.test(String(t || '').trim());
+export const isPlatformTag = (t) => /^(ios|android|backend|miniapps?|mobile|web|windows|macos)$/i.test(String(t || '').trim());
+export const isSprintUnplannedTag = (t) => String(t || '').trim().toLowerCase() === SPRINT_UNPLANNED_TAG.toLowerCase();
+
+export const hasCycleTag = (item) => (item?.tags || []).some(isCycleTag);
+export const hasPlatformTag = (item) => (item?.tags || []).some(isPlatformTag);
+export const isSprintUnplanned = (item) => (item?.tags || []).some(isSprintUnplannedTag);
+
 export const IDLE_DAYS = 7;
 // Info reasons are shown for context but don't count as something to fix.
 export const needsAction = (reasons) => reasons.some((r) => r.severity !== 'info');
@@ -108,6 +120,12 @@ export function attentionReasons(item, data, featureById) {
   else if (!item.onBoard) {
     const f = featureById.get(item.featureId);
     reasons.push({ key: 'off-board', label: `Feature not on board${f ? ` (${f.iterationPath.split('\\').slice(-2).join('\\')})` : ''}`, severity: 'high' });
+  }
+  if (!hasCycleTag(item)) {
+    reasons.push({ key: 'missing-cycle', label: `Missing cycle (${CURRENT_CYCLE_TAG})`, severity: 'medium' });
+  }
+  if (!hasPlatformTag(item)) {
+    reasons.push({ key: 'missing-platform', label: 'Missing platform tag', severity: 'medium' });
   }
   if (!isUnderSprintRoot(item, data)) reasons.push({ key: 'legacy-iteration', label: 'Legacy iteration', severity: 'medium' });
   const sprint = data.sprints.find((s) => s.path === item.iterationPath);

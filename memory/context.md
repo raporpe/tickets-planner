@@ -20,7 +20,9 @@
 
 - **Board methodology**: see `instructions.md` → Board Methodology. Feature (Features kanban) = big ongoing initiative; Task/Bug (weekly Taskboard) = real work; every Task rolls up to a board Feature.
 - **Iterations**: new work → `SAN SA\Sprint`; work done this sprint → current sprint (`SAN SA\Sprint\YYYY.NN`). Resolve the current sprint live: `GET .../4271a5b2-919a-44ce-a87d-ef4c4d823a21/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`. Never hardcode it.
-- **Required tags**: current cycle (`FY26 C5`) + platform (`iOS` / `Android` / `Backend` / `MiniApps` …) + topic tags.
+- **Required tags**:
+  1. Current cycle (`FY26 C5` now; Microsoft FY starts in July, cycles are quarterly) + platform (`iOS` / `Android` / `Backend` / `MiniApps` …) + topic tags.
+  2. **`Sprint-Unplanned`**: Add to any ticket brought into an active sprint that was not part of the original sprint plan (bugs, priority changes, surprise mid-sprint work). Controlled via a dedicated checkbox in the planner's ticket detail panel and highlighted on the sprint board.
 - **Weekly tag** (Raul's personal filter): Monday date of the current week as `YYYYMMDD`. Add it to Tasks worked on that week; keep previous weeks' tags.
 - **Features board columns → state**: New→New; Backlog of ideas / Product & Design / Ready for development→Active; In Development→Work in Progress; QA/Testing→Testing; Ready to flight→Resolved; Flighting→Flighting; Shipped/Closed→Closed. Lanes: Core Experience & Quality, Growth, Others.
 - **Area for Raul's work**: `SAN SA\Scaffolding\Fundamental`.

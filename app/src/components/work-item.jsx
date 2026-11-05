@@ -1,10 +1,10 @@
-import { Check, ChevronsUpDown, ExternalLink, TriangleAlert } from 'lucide-react';
+import { Check, ChevronsUpDown, ExternalLink, TriangleAlert, Zap } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { canBeInSprint, columnRank, isDone, stateTone, typeShort, typeStyle } from '@/lib/planning';
+import { canBeInSprint, columnRank, isDone, isSprintUnplanned, stateTone, typeShort, typeStyle } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 import { useShortcutOpen } from '@/lib/shortcuts';
 
@@ -159,6 +159,7 @@ export function TypeLabel({ type }) {
 export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart, grabbable, className, ...rest }) {
   const { openItem } = useDetail();
   const grab = !pending && (onDragStart || grabbable);
+  const unplanned = isSprintUnplanned(item);
   return (
     <article
       {...rest}
@@ -173,6 +174,8 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
       }}
       className={cn(
         'group rounded-lg border bg-card px-3 py-2.5 shadow-[0_1px_2px_oklch(0.4_0.02_60/0.06),0_2px_6px_-2px_oklch(0.4_0.02_60/0.08)] transition-[opacity,border-color,box-shadow,translate] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:border-foreground/15 motion-reduce:hover:translate-y-0 hover:shadow-[0_2px_4px_oklch(0.4_0.02_60/0.06),0_6px_14px_-4px_oklch(0.4_0.02_60/0.12)] dark:shadow-[0_1px_2px_oklch(0_0_0/0.3)] dark:hover:shadow-[0_4px_12px_-2px_oklch(0_0_0/0.45)]',
+        unplanned &&
+          'border-amber-300/90 bg-gradient-to-br from-amber-50/90 via-card to-orange-50/60 ring-1 ring-amber-300/55 shadow-[0_2px_6px_oklch(0.68_0.15_65/0.14),0_10px_22px_-6px_oklch(0.68_0.15_65/0.2)] hover:border-amber-400 dark:border-amber-400/40 dark:from-amber-400/12 dark:via-card dark:to-orange-400/8 dark:ring-amber-400/25 dark:shadow-[0_4px_14px_-2px_oklch(0_0_0/0.55),0_10px_24px_-4px_oklch(0.75_0.15_65/0.18)]',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
         grab && 'cursor-grab active:cursor-grabbing',
@@ -182,6 +185,17 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
       <div className="flex items-center gap-2">
         <TypeLabel type={item.type} />
         <ItemLink item={item} />
+        {unplanned && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100/95 px-1.5 py-px text-[10px] font-semibold text-amber-900 ring-1 ring-amber-300/80 ring-inset dark:bg-amber-400/20 dark:text-amber-200 dark:ring-amber-400/35">
+                <Zap className="size-2.5 fill-current" />
+                Unplanned
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Brought into the sprint unplanned (Sprint-Unplanned)</TooltipContent>
+          </Tooltip>
+        )}
         {item.weeksCarried >= 4 && (
           <Tooltip>
             <TooltipTrigger asChild>
