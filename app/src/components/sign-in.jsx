@@ -71,11 +71,11 @@ export function SignIn({ status, onSignedIn }) {
         <div className="mt-6 grid gap-2">
           <Button size="lg" onClick={signInWithCli} disabled={!!busy} className="justify-start">
             {busy === 'cli' ? <Loader2 className="animate-spin" /> : <Terminal />}
-            Use my Azure CLI login
+            {busy === 'cli' ? 'Acquiring Azure CLI token…' : 'Use my Azure CLI login'}
           </Button>
           <Button size="lg" variant="outline" onClick={signInWithDevice} disabled={!!busy} className="justify-start">
             {busy === 'device' ? <Loader2 className="animate-spin" /> : <KeyRound />}
-            Sign in with a device code
+            {busy === 'device' ? 'Requesting device code…' : 'Sign in with a device code'}
           </Button>
         </div>
 

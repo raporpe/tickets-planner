@@ -27,6 +27,65 @@ let auth = { cred: new AzureCliCredential(), method: 'azure-cli' };
 let cached = null;
 let device = null;
 
+function defaultSteps() {
+  return [
+    { id: 'auth', label: 'Azure CLI session', headline: 'Signing in to Azure DevOps', state: 'active', detail: `Acquiring Azure CLI token for ${PROJECT}…` },
+    { id: 'sprints', label: 'Sprint schedule', headline: 'Loading sprint schedule', state: 'pending', detail: `Waiting to read ${PROJECT}\\${SPRINT_ROOT} iterations` },
+    { id: 'board', label: 'Features board & states', headline: 'Loading Features board & workflow', state: 'pending', detail: 'Columns, board Features & state mappings' },
+    { id: 'wiql', label: 'Assigned work items', headline: 'Querying assigned work items', state: 'pending', detail: 'Tasks, Bugs & User Stories assigned to you' },
+    { id: 'items', label: 'Ticket fields & relations', headline: 'Hydrating ticket fields & links', state: 'pending', detail: 'Batch-fetching work items & artifact links' },
+    { id: 'hierarchy', label: 'Epic › Feature › Story chains', headline: 'Walking Epic › Feature › Story hierarchy', state: 'pending', detail: 'Resolving parent chains & board Features' },
+  ];
+}
+
+let progress = { active: true, title: 'Signing in to Azure DevOps', detail: `Acquiring Azure CLI token for ${PROJECT}…`, steps: defaultSteps() };
+
+function syncHeadline() {
+  const cur = [...progress.steps].reverse().find((s) => s.state === 'active') || [...progress.steps].reverse().find((s) => s.state === 'done');
+  if (cur) {
+    progress.title = cur.headline;
+    progress.detail = cur.detail;
+  }
+}
+
+function beginProgress(preserveAuth = false) {
+  const savedAuth = preserveAuth && progress.steps[0]?.state === 'done' ? { ...progress.steps[0] } : null;
+  const steps = defaultSteps();
+  if (savedAuth) steps[0] = savedAuth;
+  progress = { active: true, title: steps[0].headline, detail: steps[0].detail, steps };
+  syncHeadline();
+}
+
+function stepActive(id, detail) {
+  progress.active = true;
+  const step = progress.steps.find((s) => s.id === id);
+  if (step) {
+    step.state = 'active';
+    step.detail = detail;
+    progress.title = step.headline;
+    progress.detail = detail;
+  }
+}
+
+function stepDone(id, detail, startedAt) {
+  const step = progress.steps.find((s) => s.id === id);
+  if (step) {
+    step.state = 'done';
+    step.detail = detail;
+    step.ms = Math.max(0, Date.now() - startedAt);
+  }
+  syncHeadline();
+}
+
+function progressSnapshot() {
+  return {
+    active: progress.active,
+    title: progress.title,
+    detail: progress.detail,
+    steps: progress.steps.map(({ id, label, state, detail, ms }) => (ms === undefined ? { id, label, state, detail } : { id, label, state, detail, ms })),
+  };
+}
+
 async function token() {
   if (cached && cached.expiresOn - Date.now() > 5 * 60 * 1000) return cached.token;
   const t = await auth.cred.getToken(SCOPE);
@@ -65,11 +124,16 @@ async function ado(url, { method = 'GET', body, contentType = 'application/json'
   return text ? JSON.parse(text) : null;
 }
 
-async function getItems(ids, { relations = false, fields } = {}) {
+async function getItems(ids, { relations = false, fields, progressStep } = {}) {
   const out = [];
   const unique = [...new Set(ids)];
+  const chunkCount = Math.ceil(unique.length / 200);
   for (let i = 0; i < unique.length; i += 200) {
-    const body = { ids: unique.slice(i, i + 200), errorPolicy: 'omit' };
+    const chunk = unique.slice(i, i + 200);
+    if (progressStep && chunkCount > 1) {
+      stepActive(progressStep, `Batch ${Math.floor(i / 200) + 1}/${chunkCount} · loading ${Math.min(out.length + chunk.length, unique.length)} of ${unique.length} tickets…`);
+    }
+    const body = { ids: chunk, errorPolicy: 'omit' };
     if (relations) body.$expand = 'relations';
     else if (fields) body.fields = fields;
     const r = await ado(`/${P}/_apis/wit/workitemsbatch?api-version=7.1`, { method: 'POST', body });
@@ -144,99 +208,134 @@ function summarizeFeature(wi, onBoard) {
 }
 
 async function buildOverview() {
-  const sprints = await getSprints();
-  // Closed tickets normally age out after 21 days, but the current and upcoming sprints keep all of theirs.
-  const live = sprints.filter((s) => s.timeFrame === 'current' || s.timeFrame === 'future').map((s) => `'${s.path.replace(/'/g, "''")}'`);
-  const keepClosed = live.length ? ` OR ([System.State] <> 'Removed' AND [System.IterationPath] IN (${live.join(',')}))` : '';
-  const wiql = {
-    query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AssignedTo] = @Me
-      AND [System.WorkItemType] IN (${WORK_TYPES.map((t) => `'${t}'`).join(',')})
-      AND ([System.State] NOT IN ('Closed','Removed','Done') OR ([System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 21)${keepClosed})`,
-  };
-  const [q, boardIds, me, featureColumns] = await Promise.all([
-    ado(`/${P}/_apis/wit/wiql?api-version=7.1`, { method: 'POST', body: wiql }),
-    getBoardFeatureIds(),
-    ado('/_apis/connectionData'),
-    getFeatureColumns(),
-  ]);
-  const board = new Set(boardIds);
-  const all = new Map();
-  (await getItems(q.workItems.map((w) => w.id), { relations: true })).forEach((wi) => all.set(wi.id, wi));
-  const mine = [...all.values()];
+  beginProgress(true);
+  try {
+    const sprintFlow = (async () => {
+      const tSprints = Date.now();
+      stepActive('sprints', `Reading ${PROJECT}\\${SPRINT_ROOT} iterations…`);
+      const sprints = await getSprints();
+      const current = sprints.find((s) => s.timeFrame === 'current')?.name || 'current + upcoming';
+      stepDone('sprints', `${sprints.length} sprints · ${current}`, tSprints);
 
-  // Walk parents until every chain reaches a Feature (or has no parent).
-  let frontier = mine.map(parentOf).filter((id) => id && !all.has(id));
-  for (let depth = 0; depth < 6 && frontier.length; depth++) {
-    const fetched = await getItems(frontier, { relations: true });
-    fetched.forEach((wi) => all.set(wi.id, wi));
-    frontier = fetched
-      .filter((wi) => wi.fields['System.WorkItemType'] !== 'Feature')
-      .map(parentOf)
-      .filter((id) => id && !all.has(id));
-  }
+      // Closed tickets normally age out after 21 days, but the current and upcoming sprints keep all of theirs.
+      const tWiql = Date.now();
+      stepActive('wiql', 'Running WIQL query for Tasks, Bugs & Stories…');
+      const live = sprints.filter((s) => s.timeFrame === 'current' || s.timeFrame === 'future').map((s) => `'${s.path.replace(/'/g, "''")}'`);
+      const keepClosed = live.length ? ` OR ([System.State] <> 'Removed' AND [System.IterationPath] IN (${live.join(',')}))` : '';
+      const wiql = {
+        query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AssignedTo] = @Me
+          AND [System.WorkItemType] IN (${WORK_TYPES.map((t) => `'${t}'`).join(',')})
+          AND ([System.State] NOT IN ('Closed','Removed','Done') OR ([System.State] = 'Closed' AND [System.ChangedDate] >= @Today - 21)${keepClosed})`,
+      };
+      const q = await ado(`/${P}/_apis/wit/wiql?api-version=7.1`, { method: 'POST', body: wiql });
+      stepDone('wiql', `${q.workItems.length} assigned tickets matched`, tWiql);
+      return [sprints, q];
+    })();
 
-  const features = new Map();
-  const items = mine.map((wi) => {
-    const f = wi.fields;
-    const chain = [];
-    let feature = null;
-    let cur = wi;
-    for (let d = 0; d < 6; d++) {
-      const pid = parentOf(cur);
-      if (!pid || !all.has(pid)) break;
-      cur = all.get(pid);
-      chain.push({ id: cur.id, type: cur.fields['System.WorkItemType'], title: cur.fields['System.Title'], state: cur.fields['System.State'] });
-      if (cur.fields['System.WorkItemType'] === 'Feature') { feature = cur; break; }
+    const boardFlow = (async () => {
+      const tBoard = Date.now();
+      stepActive('board', 'Fetching Features board columns & state rules…');
+      const states = {};
+      const [boardIds, me, featureColumns] = await Promise.all([
+        getBoardFeatureIds(),
+        ado('/_apis/connectionData'),
+        getFeatureColumns(),
+        Promise.all(
+          WORK_TYPES.map(async (t) => {
+            const r = await ado(`/${P}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
+            states[t] = r.value.map((s) => s.name);
+          }),
+        ),
+      ]);
+      stepDone('board', `${boardIds.length} board Features · ${featureColumns.length} columns`, tBoard);
+      return [boardIds, me, featureColumns, states];
+    })();
+
+    const [[sprints, q], [boardIds, me, featureColumns, states]] = await Promise.all([sprintFlow, boardFlow]);
+    const board = new Set(boardIds);
+    const all = new Map();
+    const ids = q.workItems.map((w) => w.id);
+    const tItems = Date.now();
+    stepActive('items', `Loading ${ids.length} tickets with parent & PR links…`);
+    (await getItems(ids, { relations: true, progressStep: 'items' })).forEach((wi) => all.set(wi.id, wi));
+    const mine = [...all.values()];
+    stepDone('items', `${mine.length} tickets & links loaded`, tItems);
+
+    // Walk parents until every chain reaches a Feature (or has no parent).
+    const tHierarchy = Date.now();
+    let frontier = mine.map(parentOf).filter((id) => id && !all.has(id));
+    let parentCount = 0;
+    stepActive('hierarchy', frontier.length ? `Level 1 · resolving ${frontier.length} parent items…` : 'Linking tickets to Features board…');
+    for (let depth = 0; depth < 6 && frontier.length; depth++) {
+      if (depth > 0) stepActive('hierarchy', `Level ${depth + 1} · resolving ${frontier.length} parent items…`);
+      const fetched = await getItems(frontier, { relations: true });
+      parentCount += fetched.length;
+      fetched.forEach((wi) => all.set(wi.id, wi));
+      frontier = fetched
+        .filter((wi) => wi.fields['System.WorkItemType'] !== 'Feature')
+        .map(parentOf)
+        .filter((id) => id && !all.has(id));
     }
-    if (feature && !features.has(feature.id)) features.set(feature.id, summarizeFeature(feature, board.has(feature.id)));
-    const tags = (f['System.Tags'] || '').split(';').map((t) => t.trim()).filter(Boolean);
-    const childIds = childrenOf(wi);
+
+    const features = new Map();
+    const items = mine.map((wi) => {
+      const f = wi.fields;
+      const chain = [];
+      let feature = null;
+      let cur = wi;
+      for (let d = 0; d < 6; d++) {
+        const pid = parentOf(cur);
+        if (!pid || !all.has(pid)) break;
+        cur = all.get(pid);
+        chain.push({ id: cur.id, type: cur.fields['System.WorkItemType'], title: cur.fields['System.Title'], state: cur.fields['System.State'] });
+        if (cur.fields['System.WorkItemType'] === 'Feature') { feature = cur; break; }
+      }
+      if (feature && !features.has(feature.id)) features.set(feature.id, summarizeFeature(feature, board.has(feature.id)));
+      const tags = (f['System.Tags'] || '').split(';').map((t) => t.trim()).filter(Boolean);
+      const childIds = childrenOf(wi);
+      return {
+        id: wi.id,
+        type: f['System.WorkItemType'],
+        title: f['System.Title'],
+        state: f['System.State'],
+        iterationPath: f['System.IterationPath'],
+        tags,
+        weeksCarried: tags.filter((t) => /^\d{8}$/.test(t)).length,
+        changedDate: f['System.ChangedDate'],
+        parentId: parentOf(wi),
+        chain,
+        featureId: feature?.id || null,
+        onBoard: Boolean(feature && board.has(feature.id)),
+        childCount: childIds.length,
+        openChildCount: childIds.filter((c) => all.has(c) && !['Closed', 'Removed', 'Done'].includes(all.get(c).fields['System.State'])).length,
+        childrenKnown: childIds.every((c) => all.has(c)),
+        url: editUrl(wi.id),
+      };
+    });
+
+    const missingBoard = boardIds.filter((id) => !features.has(id));
+    if (missingBoard.length) stepActive('hierarchy', `Hydrating ${missingBoard.length} additional board Features…`);
+    const boardFeatures = await getItems(missingBoard, {
+      fields: ['System.Id', 'System.Title', 'System.State', 'System.IterationPath', 'System.AssignedTo', BOARD_FIELDS.column, BOARD_FIELDS.lane],
+    });
+    boardFeatures.forEach((wi) => features.set(wi.id, summarizeFeature(wi, true)));
+    stepDone('hierarchy', `${parentCount} parents linked · ${features.size} Features ready`, tHierarchy);
+
     return {
-      id: wi.id,
-      type: f['System.WorkItemType'],
-      title: f['System.Title'],
-      state: f['System.State'],
-      iterationPath: f['System.IterationPath'],
-      tags,
-      weeksCarried: tags.filter((t) => /^\d{8}$/.test(t)).length,
-      changedDate: f['System.ChangedDate'],
-      parentId: parentOf(wi),
-      chain,
-      featureId: feature?.id || null,
-      onBoard: Boolean(feature && board.has(feature.id)),
-      childCount: childIds.length,
-      openChildCount: childIds.filter((c) => all.has(c) && !['Closed', 'Removed', 'Done'].includes(all.get(c).fields['System.State'])).length,
-      childrenKnown: childIds.every((c) => all.has(c)),
-      url: editUrl(wi.id),
+      me: { name: me.authenticatedUser.providerDisplayName, id: me.authenticatedUser.id },
+      org: ORG,
+      project: PROJECT,
+      backlogPath: sprintPath(),
+      sprints,
+      features: [...features.values()],
+      featureColumns,
+      items,
+      states,
+      generatedAt: new Date().toISOString(),
     };
-  });
-
-  const missingBoard = boardIds.filter((id) => !features.has(id));
-  const boardFeatures = await getItems(missingBoard, {
-    fields: ['System.Id', 'System.Title', 'System.State', 'System.IterationPath', 'System.AssignedTo', BOARD_FIELDS.column, BOARD_FIELDS.lane],
-  });
-  boardFeatures.forEach((wi) => features.set(wi.id, summarizeFeature(wi, true)));
-
-  const states = {};
-  await Promise.all(
-    WORK_TYPES.map(async (t) => {
-      const r = await ado(`/${P}/_apis/wit/workitemtypes/${encodeURIComponent(t)}/states?api-version=7.1`);
-      states[t] = r.value.map((s) => s.name);
-    }),
-  );
-
-  return {
-    me: { name: me.authenticatedUser.providerDisplayName, id: me.authenticatedUser.id },
-    org: ORG,
-    project: PROJECT,
-    backlogPath: sprintPath(),
-    sprints,
-    features: [...features.values()],
-    featureColumns,
-    items,
-    states,
-    generatedAt: new Date().toISOString(),
-  };
+  } finally {
+    progress.active = false;
+  }
 }
 
 // ---------- HTTP ----------
@@ -252,12 +351,23 @@ const route = (fn) => async (req, res) => {
   }
 };
 
+app.get('/api/progress', (_req, res) => {
+  res.json(progressSnapshot());
+});
+
 app.get('/api/auth/status', async (_req, res) => {
+  beginProgress(false);
+  const t0 = Date.now();
   try {
+    stepActive('auth', `Acquiring Azure CLI token for ${PROJECT}…`);
     await token();
+    stepActive('auth', `Verifying ${PROJECT} session…`);
     const me = await ado('/_apis/connectionData');
+    const user = me.authenticatedUser.providerDisplayName || 'Signed in';
+    stepDone('auth', `${user} · ${auth.method === 'device-code' ? 'device code' : 'Azure CLI'}`, t0);
     res.json({ signedIn: true, method: auth.method, user: me.authenticatedUser.providerDisplayName, org: ORG });
   } catch (e) {
+    progress.active = false;
     res.json({ signedIn: false, method: auth.method, error: e.message, org: ORG });
   }
 });

@@ -27,6 +27,7 @@ async function request(method, url, body) {
 
 export const api = {
   attachment: (url) => invoke('planner_attachment', { url }),
+  progress: () => request('GET', '/progress'),
   status: () => request('GET', '/auth/status'),
   signInCli: () => request('POST', '/auth/cli'),
   startDevice: () => request('POST', '/auth/device'),

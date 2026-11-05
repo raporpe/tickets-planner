@@ -7,8 +7,8 @@ use serde_json::{json, Map, Value};
 use std::{
     collections::{HashMap, HashSet},
     env,
-    sync::{Arc, LazyLock},
-    time::Duration as Timeout,
+    sync::{Arc, LazyLock, Mutex},
+    time::{Duration as Timeout, Instant},
 };
 use url::Url;
 
@@ -59,6 +59,103 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+#[derive(Clone, Serialize)]
+struct ProgressStep {
+    id: &'static str,
+    label: &'static str,
+    #[serde(skip_serializing)]
+    headline: &'static str,
+    state: &'static str,
+    detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ms: Option<u64>,
+}
+
+#[derive(Clone, Serialize)]
+struct Progress {
+    active: bool,
+    title: String,
+    detail: String,
+    steps: Vec<ProgressStep>,
+}
+
+fn default_steps(project: &str) -> Vec<ProgressStep> {
+    vec![
+        ProgressStep {
+            id: "auth",
+            label: "Azure CLI session",
+            headline: "Signing in to Azure DevOps",
+            state: "active",
+            detail: format!("Acquiring Azure CLI token for {project}…"),
+            ms: None,
+        },
+        ProgressStep {
+            id: "sprints",
+            label: "Sprint schedule",
+            headline: "Loading sprint schedule",
+            state: "pending",
+            detail: format!("Waiting to read {project}\\Sprint iterations"),
+            ms: None,
+        },
+        ProgressStep {
+            id: "board",
+            label: "Features board & states",
+            headline: "Loading Features board & workflow",
+            state: "pending",
+            detail: "Columns, board Features & state mappings".into(),
+            ms: None,
+        },
+        ProgressStep {
+            id: "wiql",
+            label: "Assigned work items",
+            headline: "Querying assigned work items",
+            state: "pending",
+            detail: "Tasks, Bugs & User Stories assigned to you".into(),
+            ms: None,
+        },
+        ProgressStep {
+            id: "items",
+            label: "Ticket fields & relations",
+            headline: "Hydrating ticket fields & links",
+            state: "pending",
+            detail: "Batch-fetching work items & artifact links".into(),
+            ms: None,
+        },
+        ProgressStep {
+            id: "hierarchy",
+            label: "Epic › Feature › Story chains",
+            headline: "Walking Epic › Feature › Story hierarchy",
+            state: "pending",
+            detail: "Resolving parent chains & board Features".into(),
+            ms: None,
+        },
+    ]
+}
+
+impl Progress {
+    fn new(project: &str) -> Self {
+        let steps = default_steps(project);
+        Self {
+            active: true,
+            title: steps[0].headline.into(),
+            detail: steps[0].detail.clone(),
+            steps,
+        }
+    }
+    fn sync_headline(&mut self) {
+        if let Some(step) = self
+            .steps
+            .iter()
+            .rev()
+            .find(|s| s.state == "active")
+            .or_else(|| self.steps.iter().rev().find(|s| s.state == "done"))
+        {
+            self.title = step.headline.into();
+            self.detail = step.detail.clone();
+        }
+    }
+}
+
 pub struct Backend {
     client: reqwest::Client,
     auth: Arc<Auth>,
@@ -66,6 +163,7 @@ pub struct Backend {
     project: String,
     team: String,
     sprint_root: String,
+    progress: Mutex<Progress>,
 }
 
 fn enc(value: &str) -> String {
@@ -169,15 +267,57 @@ impl Backend {
             .timeout(Timeout::from_secs(60))
             .redirect(reqwest::redirect::Policy::none())
             .build()?;
+        let project = env::var("ADO_PROJECT").unwrap_or_else(|_| "SAN SA".into());
         Ok(Self {
             auth: Arc::new(Auth::new(client.clone())?),
             client,
             org,
-            project: env::var("ADO_PROJECT").unwrap_or_else(|_| "SAN SA".into()),
+            progress: Mutex::new(Progress::new(&project)),
+            project,
             team: env::var("ADO_TEAM_ID")
                 .unwrap_or_else(|_| "4271a5b2-919a-44ce-a87d-ef4c4d823a21".into()),
             sprint_root: env::var("ADO_SPRINT_ROOT").unwrap_or_else(|_| "Sprint".into()),
         })
+    }
+    fn begin_progress(&self, preserve_auth: bool) {
+        let mut p = self.progress.lock().unwrap();
+        let saved_auth = if preserve_auth {
+            p.steps.first().filter(|s| s.state == "done").cloned()
+        } else {
+            None
+        };
+        *p = Progress::new(&self.project);
+        if let Some(done_auth) = saved_auth {
+            p.steps[0] = done_auth;
+        }
+        p.sync_headline();
+    }
+    fn step_active(&self, step_id: &'static str, detail: impl Into<String>) {
+        let detail = detail.into();
+        let mut p = self.progress.lock().unwrap();
+        p.active = true;
+        if let Some(step) = p.steps.iter_mut().find(|s| s.id == step_id) {
+            step.state = "active";
+            step.detail = detail.clone();
+            p.title = step.headline.into();
+            p.detail = detail;
+        }
+    }
+    fn step_done(&self, step_id: &'static str, detail: impl Into<String>, started: Instant) {
+        let detail = detail.into();
+        let mut p = self.progress.lock().unwrap();
+        if let Some(step) = p.steps.iter_mut().find(|s| s.id == step_id) {
+            step.state = "done";
+            step.detail = detail;
+            step.ms = Some(started.elapsed().as_millis() as u64);
+        }
+        p.sync_headline();
+    }
+    fn finish_progress(&self) {
+        self.progress.lock().unwrap().active = false;
+    }
+    fn progress_snapshot(&self) -> Value {
+        json!(&*self.progress.lock().unwrap())
     }
     fn p(&self) -> String {
         enc(&self.project)
@@ -270,10 +410,34 @@ impl Backend {
         relations: bool,
         fields: Option<Vec<&str>>,
     ) -> Result<Vec<Value>> {
+        self.items_tracked(ids, relations, fields, None).await
+    }
+    async fn items_tracked(
+        &self,
+        ids: &[u64],
+        relations: bool,
+        fields: Option<Vec<&str>>,
+        progress_step: Option<&'static str>,
+    ) -> Result<Vec<Value>> {
         let mut seen = HashSet::new();
         let unique: Vec<u64> = ids.iter().copied().filter(|id| seen.insert(*id)).collect();
+        let total = unique.len();
+        let chunks: Vec<&[u64]> = unique.chunks(200).collect();
+        let chunk_count = chunks.len();
         let mut out = Vec::new();
-        for chunk in unique.chunks(200) {
+        for (idx, chunk) in chunks.into_iter().enumerate() {
+            if let Some(step_id) = progress_step {
+                if chunk_count > 1 {
+                    self.step_active(
+                        step_id,
+                        format!(
+                            "Batch {}/{chunk_count} · loading {} of {total} tickets…",
+                            idx + 1,
+                            (out.len() + chunk.len()).min(total)
+                        ),
+                    );
+                }
+            }
             let mut body = json!({"ids":chunk,"errorPolicy":"omit"});
             if relations {
                 body["$expand"] = json!("relations");
@@ -372,34 +536,114 @@ impl Backend {
     }
 
     async fn overview(&self) -> Result<Value> {
-        let sprints = self.sprints().await?;
-        let query = overview_query(&sprints);
+        self.begin_progress(true);
+        let result = self.build_overview().await;
+        self.finish_progress();
+        result
+    }
+
+    async fn build_overview(&self) -> Result<Value> {
         let wiql_path = format!("/{}/_apis/wit/wiql?api-version=7.1", self.p());
         let board_path = format!(
             "/{}/{}/_apis/work/backlogs/Microsoft.FeatureCategory/workItems?api-version=7.1",
             self.p(),
             enc(&self.team)
         );
-        let (q, board, me, columns, states) = tokio::try_join!(
-            self.ado("POST", &wiql_path, Some(json!({"query":query})), false),
-            self.get(&board_path),
-            self.get("/_apis/connectionData"),
-            self.feature_columns(),
-            self.states()
-        )?;
+        let sprint_flow = async {
+            let t_sprints = Instant::now();
+            self.step_active(
+                "sprints",
+                format!("Reading {}\\Sprint iterations…", self.project),
+            );
+            let sprints = self.sprints().await?;
+            let sprint_list = array(&sprints);
+            let current = sprint_list
+                .iter()
+                .find(|s| text(&s["timeFrame"]) == "current")
+                .map(|s| text(&s["name"]))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("current + upcoming");
+            self.step_done(
+                "sprints",
+                format!("{} sprints · {current}", sprint_list.len()),
+                t_sprints,
+            );
+
+            let t_wiql = Instant::now();
+            self.step_active("wiql", "Running WIQL query for Tasks, Bugs & Stories…");
+            let query = overview_query(&sprints);
+            let q = self
+                .ado("POST", &wiql_path, Some(json!({"query":query})), false)
+                .await?;
+            let matched = array(&q["workItems"]).len();
+            self.step_done("wiql", format!("{matched} assigned tickets matched"), t_wiql);
+            Ok::<_, Error>((sprints, q))
+        };
+        let board_flow = async {
+            let t_board = Instant::now();
+            self.step_active("board", "Fetching Features board columns & state rules…");
+            let (board, me, columns, states) = tokio::try_join!(
+                self.get(&board_path),
+                self.get("/_apis/connectionData"),
+                self.feature_columns(),
+                self.states()
+            )?;
+            let board_count = array(&board["workItems"]).len();
+            let col_count = array(&columns).len();
+            self.step_done(
+                "board",
+                format!("{board_count} board Features · {col_count} columns"),
+                t_board,
+            );
+            Ok::<_, Error>((board, me, columns, states))
+        };
+        let ((sprints, q), (board, me, columns, states)) =
+            tokio::try_join!(sprint_flow, board_flow)?;
         let ids: Vec<u64> = array(&q["workItems"]).iter().map(id).collect();
-        let mine = self.items(&ids, true, None).await?;
+        let t_items = Instant::now();
+        self.step_active(
+            "items",
+            format!("Loading {} tickets with parent & PR links…", ids.len()),
+        );
+        let mine = self.items_tracked(&ids, true, None, Some("items")).await?;
+        self.step_done(
+            "items",
+            format!("{} tickets & links loaded", mine.len()),
+            t_items,
+        );
+
+        let t_hierarchy = Instant::now();
         let mut all: HashMap<u64, Value> = mine.iter().map(|wi| (id(wi), wi.clone())).collect();
         let mut frontier: Vec<u64> = mine
             .iter()
             .filter_map(parent)
             .filter(|pid| !all.contains_key(pid))
             .collect();
-        for _ in 0..6 {
+        let mut parent_count = 0usize;
+        self.step_active(
+            "hierarchy",
+            if frontier.is_empty() {
+                "Linking tickets to Features board…".to_owned()
+            } else {
+                format!("Level 1 · resolving {} parent items…", frontier.len())
+            },
+        );
+        for depth in 0..6 {
             if frontier.is_empty() {
                 break;
             }
+            if depth > 0 {
+                self.step_active(
+                    "hierarchy",
+                    format!(
+                        "Level {} · resolving {} parent items…",
+                        depth + 1,
+                        frontier.len()
+                    ),
+                );
+            }
             let fetched = self.items(&frontier, true, None).await?;
+            parent_count += fetched.len();
             all.extend(fetched.iter().map(|wi| (id(wi), wi.clone())));
             frontier = fetched
                 .iter()
@@ -445,6 +689,12 @@ impl Backend {
             .into_iter()
             .filter(|id| !features.contains_key(id))
             .collect();
+        if !missing.is_empty() {
+            self.step_active(
+                "hierarchy",
+                format!("Hydrating {} additional board Features…", missing.len()),
+            );
+        }
         for wi in self
             .items(
                 &missing,
@@ -465,6 +715,14 @@ impl Backend {
         }
         let mut features: Vec<Value> = features.into_values().collect();
         features.sort_by_key(id);
+        self.step_done(
+            "hierarchy",
+            format!(
+                "{parent_count} parents linked · {} Features ready",
+                features.len()
+            ),
+            t_hierarchy,
+        );
         Ok(json!({
             "me":{"name":me["authenticatedUser"]["providerDisplayName"],"id":me["authenticatedUser"]["id"]},
             "org":self.org,"project":self.project,"backlogPath":self.backlog(),"sprints":sprints,"features":features,
@@ -779,14 +1037,43 @@ impl Backend {
     pub async fn request(self: Arc<Self>, method: &str, url: &str, body: Value) -> Result<Value> {
         let parts: Vec<&str> = url.trim_start_matches('/').split('/').collect();
         match (method, parts.as_slice()) {
+            ("GET", ["progress"]) => Ok(self.progress_snapshot()),
             ("GET", ["auth", "status"]) => {
-                let result = self.get("/_apis/connectionData").await;
+                self.begin_progress(false);
+                let t0 = Instant::now();
+                self.step_active(
+                    "auth",
+                    format!("Acquiring Azure CLI token for {}…", self.project),
+                );
+                let token_res = self.auth.token().await;
+                if token_res.is_ok() {
+                    self.step_active("auth", format!("Verifying {} session…", self.project));
+                }
+                let result = match token_res {
+                    Ok(_) => self.get("/_apis/connectionData").await,
+                    Err(e) => Err(e),
+                };
                 let method = self.auth.method().await;
                 Ok(match result {
                     Ok(me) => {
+                        let user = text(&me["authenticatedUser"]["providerDisplayName"]);
+                        self.step_done(
+                            "auth",
+                            format!(
+                                "{} · {}",
+                                if user.is_empty() { "Signed in" } else { user },
+                                if method == "device-code" {
+                                    "device code"
+                                } else {
+                                    "Azure CLI"
+                                }
+                            ),
+                            t0,
+                        );
                         json!({"signedIn":true,"method":method,"user":me["authenticatedUser"]["providerDisplayName"],"org":self.org})
                     }
                     Err(error) => {
+                        self.finish_progress();
                         json!({"signedIn":false,"method":method,"error":error.error,"org":self.org})
                     }
                 })
@@ -952,6 +1239,7 @@ mod tests {
             project: "Test Project".into(),
             team: "test-team".into(),
             sprint_root: "Sprint".into(),
+            progress: Mutex::new(Progress::new("Test Project")),
         })
     }
     async fn respond(server: &MockServer, verb: &str, route: &str, value: Value) {
@@ -1214,5 +1502,41 @@ mod tests {
         assert!(positive_id("../1").is_err());
         assert!(required(&json!({"text":"  "}), "text").is_err());
         assert_eq!(enc("SAN SA"), "SAN%20SA");
+    }
+    #[tokio::test]
+    async fn progress_endpoint_tracks_startup_steps() {
+        let server = MockServer::start().await;
+        respond(
+            &server,
+            "GET",
+            "/_apis/connectionData",
+            json!({"authenticatedUser":{"id":"u1","providerDisplayName":"Raul"}}),
+        )
+        .await;
+        let backend = mocked(&server);
+        let initial = backend
+            .clone()
+            .request("GET", "/progress", Value::Null)
+            .await
+            .unwrap();
+        assert_eq!(initial["active"], true);
+        assert_eq!(initial["steps"].as_array().unwrap().len(), 6);
+        assert_eq!(initial["steps"][0]["id"], "auth");
+        assert_eq!(initial["steps"][0]["state"], "active");
+
+        let status = backend
+            .clone()
+            .request("GET", "/auth/status", Value::Null)
+            .await
+            .unwrap();
+        assert_eq!(status["signedIn"], true);
+
+        let after_auth = backend
+            .request("GET", "/progress", Value::Null)
+            .await
+            .unwrap();
+        assert_eq!(after_auth["steps"][0]["state"], "done");
+        assert_eq!(after_auth["steps"][0]["detail"], "Raul · Azure CLI");
+        assert!(after_auth["steps"][0]["ms"].is_number());
     }
 }

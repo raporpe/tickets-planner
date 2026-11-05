@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert, X } from 'lucide-react';
+import { Check, KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,20 @@ function describe(patch, data, features) {
   return 'updated';
 }
 
+const INITIAL_PROGRESS = {
+  active: true,
+  title: 'Signing in to Azure DevOps',
+  detail: 'Acquiring Azure CLI token for SAN SA…',
+  steps: [
+    { id: 'auth', label: 'Azure CLI session', state: 'active', detail: 'Acquiring Azure CLI token for SAN SA…' },
+    { id: 'sprints', label: 'Sprint schedule', state: 'pending', detail: 'Waiting to read SAN SA\\Sprint iterations' },
+    { id: 'board', label: 'Features board & states', state: 'pending', detail: 'Columns, board Features & state mappings' },
+    { id: 'wiql', label: 'Assigned work items', state: 'pending', detail: 'Tasks, Bugs & User Stories assigned to you' },
+    { id: 'items', label: 'Ticket fields & relations', state: 'pending', detail: 'Batch-fetching work items & artifact links' },
+    { id: 'hierarchy', label: 'Epic › Feature › Story chains', state: 'pending', detail: 'Resolving parent chains & board Features' },
+  ],
+};
+
 function CardSkeleton() {
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card px-3 py-2.5">
@@ -67,17 +81,89 @@ function ColumnHeaderSkeleton({ wide }) {
   );
 }
 
+function LoadingProgress({ progress, elapsedMs }) {
+  const steps = progress?.steps || INITIAL_PROGRESS.steps;
+  const doneCount = steps.filter((s) => s.state === 'done').length;
+  const activeCount = steps.filter((s) => s.state === 'active').length;
+  const pct = Math.min(98, Math.max(8, Math.round(((doneCount + activeCount * 0.55) / steps.length) * 100)));
+
+  return (
+    <section
+      aria-live="polite"
+      className="w-full max-w-md rounded-xl border bg-card px-5 py-4 shadow-[0_12px_32px_-8px_oklch(0.25_0.02_60/0.12)] dark:shadow-[0_16px_36px_-8px_oklch(0_0_0/0.45)]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+          <h2 className="truncate text-sm font-semibold text-foreground">{progress?.title || INITIAL_PROGRESS.title}</h2>
+        </div>
+        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+          {doneCount}/{steps.length} · {(elapsedMs / 1000).toFixed(1)}s
+        </span>
+      </div>
+      <p className="mt-1 truncate pl-6 text-xs text-muted-foreground">{progress?.detail || INITIAL_PROGRESS.detail}</p>
+      <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <ul className="mt-3.5 divide-y divide-border/60 border-t pt-1">
+        {steps.map((step) => {
+          const isDoneStep = step.state === 'done';
+          const isActiveStep = step.state === 'active';
+          return (
+            <li key={step.id} className="flex items-center gap-2.5 py-1.5 text-xs">
+              <span className="flex size-3.5 shrink-0 items-center justify-center">
+                {isDoneStep ? (
+                  <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : isActiveStep ? (
+                  <Loader2 className="size-3.5 animate-spin text-primary" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-muted-foreground/35" />
+                )}
+              </span>
+              <span
+                className={
+                  isActiveStep
+                    ? 'shrink-0 font-semibold text-foreground'
+                    : isDoneStep
+                      ? 'shrink-0 font-medium text-foreground/85'
+                      : 'shrink-0 text-muted-foreground/75'
+                }
+              >
+                {step.label}
+              </span>
+              <span className="ml-auto flex min-w-0 items-center gap-2 pl-3 text-right">
+                <span className={isActiveStep ? 'truncate text-[11px] text-foreground/90' : 'truncate text-[11px] text-muted-foreground'}>
+                  {step.detail}
+                </span>
+                {isDoneStep && step.ms != null && (
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">{step.ms}ms</span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 // Mirrors the real Sprint planning layout: one-card-wide Backlog, the next sprint's whiteboard, the drawer handle.
-function LoadingPlan() {
+function LoadingPlan({ progress, elapsedMs }) {
   return (
     <div className="relative h-full overflow-hidden" aria-busy="true" aria-label="Loading sprint planning">
       <div className="flex h-full gap-3 pr-14 pb-14 pl-[3.75rem]">
-        <div className="flex h-full min-w-[19rem] flex-1 flex-col rounded-lg border bg-muted/40">
+        <div className="relative flex h-full min-w-[19rem] flex-1 flex-col rounded-lg border bg-muted/40">
           <ColumnHeaderSkeleton wide />
-          <div className="whiteboard-dots grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2.5 overflow-hidden p-3">
+          <div className="whiteboard-dots grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2.5 overflow-hidden p-3 opacity-45">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <CardSkeleton key={i} />
             ))}
+          </div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+            <LoadingProgress progress={progress} elapsedMs={elapsedMs} />
           </div>
         </div>
       </div>
@@ -97,12 +183,17 @@ function LoadingPlan() {
   );
 }
 
-function LoadingList() {
+function LoadingList({ progress, elapsedMs }) {
   return (
-    <div className="flex flex-col gap-2 px-4" aria-busy="true">
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <Skeleton key={i} className="h-14" />
-      ))}
+    <div className="relative flex h-full flex-col gap-2 px-4" aria-busy="true">
+      <div className="flex flex-col gap-2 opacity-45">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <Skeleton key={i} className="h-14" />
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+        <LoadingProgress progress={progress} elapsedMs={elapsedMs} />
+      </div>
     </div>
   );
 }
@@ -112,6 +203,9 @@ export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [progress, setProgress] = useState(INITIAL_PROGRESS);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const syncStartRef = useRef(Date.now());
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [filters, setFilters] = useState({ search: '', showClosed: false });
   const [tab, setTab] = useState('plan');
@@ -123,10 +217,17 @@ export default function App() {
   );
 
   const checkAuth = useCallback(async () => {
+    syncStartRef.current = Date.now();
+    setElapsedMs(0);
+    setProgress(INITIAL_PROGRESS);
     setAuth(await api.status().catch((e) => ({ signedIn: false, error: e.message })));
   }, []);
 
   const load = useCallback(async () => {
+    if (dataRef.current) {
+      syncStartRef.current = Date.now();
+      setElapsedMs(0);
+    }
     setLoading(true);
     setLoadError(null);
     try {
@@ -138,6 +239,30 @@ export default function App() {
       setLoading(false);
     }
   }, [checkAuth]);
+
+  const isSyncing = !auth || loading;
+  useEffect(() => {
+    if (!isSyncing) return;
+    let cancelled = false;
+    const poll = () => {
+      api
+        .progress()
+        .then((s) => {
+          if (!cancelled && s?.steps) setProgress(s);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const progressTimer = setInterval(poll, 70);
+    const clockTimer = setInterval(() => {
+      setElapsedMs(Date.now() - syncStartRef.current);
+    }, 100);
+    return () => {
+      cancelled = true;
+      clearInterval(progressTimer);
+      clearInterval(clockTimer);
+    };
+  }, [isSyncing]);
 
   useEffect(() => {
     checkAuth();
@@ -314,15 +439,7 @@ export default function App() {
     [checkAuth],
   );
 
-  if (!auth) {
-    return (
-      <div className="grid min-h-svh place-items-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!auth.signedIn) {
+  if (auth && !auth.signedIn) {
     return (
       <>
         <SignIn status={auth} onSignedIn={checkAuth} />
@@ -389,19 +506,24 @@ export default function App() {
             </button>
           )}
           <div className="ml-auto flex items-center gap-2">
+            {data && loading && (
+              <span className="hidden max-w-64 truncate text-xs text-muted-foreground lg:inline" aria-live="polite">
+                {progress?.detail || progress?.title}
+              </span>
+            )}
             <span className="hidden text-xs text-muted-foreground md:inline">
-              {auth.user} · {auth.method === 'device-code' ? 'device code' : 'Azure CLI'}
+              {auth?.user ? `${auth.user} · ${auth.method === 'device-code' ? 'device code' : 'Azure CLI'}` : progress?.detail || 'Connecting to SAN SA…'}
             </span>
             {data && <TicketSearch data={data} getTarget={getTarget} onAction={doAction} onNavigate={goTo} onView={onView} showClosed={filters.showClosed} onShowShortcuts={() => setShortcutsOpen(true)} />}
             <Button
               size="sm"
               variant="outline"
               onClick={load}
-              disabled={loading}
+              disabled={!auth || loading}
               aria-label="Refresh from Azure DevOps"
               title={data ? `Synced ${new Date(data.generatedAt).toLocaleTimeString()}` : undefined}
             >
-              <RefreshCw className={loading ? 'animate-spin' : ''} />
+              <RefreshCw className={!auth || loading ? 'animate-spin' : ''} />
               Refresh
             </Button>
             <ThemeToggle />
@@ -418,7 +540,7 @@ export default function App() {
             </div>
           )}
           {!data ? (
-            loading && (tab === 'plan' ? <LoadingPlan /> : <LoadingList />)
+            (!auth || loading) && (tab === 'plan' ? <LoadingPlan progress={progress} elapsedMs={elapsedMs} /> : <LoadingList progress={progress} elapsedMs={elapsedMs} />)
           ) : (
             <>
               <TabsContent value="plan" className="h-full">
