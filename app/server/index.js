@@ -151,6 +151,21 @@ const childrenOf = (wi) =>
 const editUrl = (id) => `${ORG}/${P}/_workitems/edit/${id}`;
 const sprintPath = (name) => `${PROJECT}\\${SPRINT_ROOT}${name ? `\\${name}` : ''}`;
 
+const nodes = new Map();
+function summarizeNode(wi) {
+  return {
+    id: wi.id,
+    title: wi.fields['System.Title'],
+    type: wi.fields['System.WorkItemType'],
+    state: wi.fields['System.State'],
+    iterationPath: wi.fields['System.IterationPath'],
+    url: editUrl(wi.id),
+  };
+}
+function rememberNode(wi) {
+  if (wi?.id) nodes.set(wi.id, { summary: summarizeNode(wi), parentId: parentOf(wi) });
+}
+
 function timeFrame(s, now = new Date()) {
   if (!s.start || !s.finish) return 'unscheduled';
   const start = new Date(s.start);
@@ -319,6 +334,8 @@ async function buildOverview() {
       fields: ['System.Id', 'System.Title', 'System.State', 'System.IterationPath', 'System.AssignedTo', BOARD_FIELDS.column, BOARD_FIELDS.lane],
     });
     boardFeatures.forEach((wi) => features.set(wi.id, summarizeFeature(wi, true)));
+    nodes.clear();
+    all.forEach((wi) => rememberNode(wi));
     stepDone('hierarchy', `${parentCount} parents linked · ${features.size} Features ready`, tHierarchy);
 
     return {
@@ -463,6 +480,8 @@ app.patch('/api/workitems/:id', route(async (req) => {
     }
     throw e;
   }
+  if ('parentId' in b) nodes.clear();
+  else nodes.delete(id);
   return {
     id: wi.id,
     rev: wi.rev,
@@ -486,20 +505,21 @@ const toComment = (c) => ({
 
 // Walk up the full parent chain (Task → Story → Feature → Epic …), top-most first.
 async function getAncestors(wi) {
+  rememberNode(wi);
   const ancestors = [];
   const seen = new Set([wi.id]);
   for (let pid = parentOf(wi); pid && !seen.has(pid) && ancestors.length < 10; ) {
     seen.add(pid);
+    const cachedNode = nodes.get(pid);
+    if (cachedNode) {
+      ancestors.unshift(cachedNode.summary);
+      pid = cachedNode.parentId;
+      continue;
+    }
     const [p] = await getItems([pid], { relations: true });
     if (!p) break;
-    ancestors.unshift({
-      id: p.id,
-      title: p.fields['System.Title'],
-      type: p.fields['System.WorkItemType'],
-      state: p.fields['System.State'],
-      iterationPath: p.fields['System.IterationPath'],
-      url: editUrl(p.id),
-    });
+    rememberNode(p);
+    ancestors.unshift(summarizeNode(p));
     pid = parentOf(p);
   }
   return ancestors;
@@ -630,10 +650,12 @@ app.get('/api/workitems/:id', route(async (req) => {
     ado(`/${P}/_apis/wit/workItems/${id}/comments?$top=200&order=desc&api-version=${COMMENTS_API}`),
   ]);
   const f = wi.fields;
-  const ancestors = await getAncestors(wi);
+  const [ancestors, children, pullRequests] = await Promise.all([
+    getAncestors(wi),
+    getChildren(wi),
+    getPullRequests(wi),
+  ]);
   const parent = ancestors.at(-1) || null;
-  const children = await getChildren(wi);
-  const pullRequests = await getPullRequests(wi);
   return {
     id: wi.id,
     rev: wi.rev,

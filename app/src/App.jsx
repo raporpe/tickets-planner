@@ -12,7 +12,7 @@ import { SignIn } from '@/components/sign-in';
 import { PlanView } from '@/components/plan-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
-import { ItemDetail } from '@/components/item-detail';
+import { clearDetailCache, ItemDetail, prefetchDetail } from '@/components/item-detail';
 import { TicketSearch } from '@/components/ticket-search';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
@@ -227,6 +227,7 @@ export default function App() {
     if (dataRef.current) {
       syncStartRef.current = Date.now();
       setElapsedMs(0);
+      clearDetailCache();
     }
     setLoading(true);
     setLoadError(null);
@@ -263,6 +264,33 @@ export default function App() {
       clearInterval(clockTimer);
     };
   }, [isSyncing]);
+
+  useEffect(() => {
+    let hoverTimer = null;
+    let hoveredId = 0;
+    const onOver = (e) => {
+      const id = Number(e.target?.closest?.('[data-item-id]')?.dataset?.itemId);
+      if (!id || id === hoveredId) return;
+      clearTimeout(hoverTimer);
+      hoveredId = id;
+      hoverTimer = setTimeout(() => prefetchDetail(id), 130);
+    };
+    const onOut = (e) => {
+      if (!hoveredId) return;
+      const nextId = Number(e.relatedTarget?.closest?.('[data-item-id]')?.dataset?.itemId);
+      if (nextId !== hoveredId) {
+        clearTimeout(hoverTimer);
+        hoveredId = 0;
+      }
+    };
+    window.addEventListener('pointerover', onOver, { passive: true });
+    window.addEventListener('pointerout', onOut, { passive: true });
+    return () => {
+      clearTimeout(hoverTimer);
+      window.removeEventListener('pointerover', onOver);
+      window.removeEventListener('pointerout', onOut);
+    };
+  }, []);
 
   useEffect(() => {
     checkAuth();
@@ -397,6 +425,7 @@ export default function App() {
         toast.success(`#${item.id} ${label}`);
         if ('parentId' in patch) {
           clearAncestors();
+          clearDetailCache();
           await load();
         }
         else setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, state: r.state, iterationPath: r.iterationPath } : i)) }));

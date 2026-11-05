@@ -164,6 +164,7 @@ pub struct Backend {
     team: String,
     sprint_root: String,
     progress: Mutex<Progress>,
+    nodes: Mutex<HashMap<u64, (Value, Option<u64>)>>,
 }
 
 fn enc(value: &str) -> String {
@@ -243,6 +244,27 @@ fn test_revision(ops: &mut Vec<Value>, rev: &Value) {
         ops.push(json!({"op":"test","path":"/rev","value":rev}));
     }
 }
+async fn join_all<T>(futures: Vec<impl std::future::Future<Output = T>>) -> Vec<T> {
+    let mut pinned: Vec<_> = futures.into_iter().map(|f| Box::pin(f)).collect();
+    let mut results: Vec<Option<T>> = (0..pinned.len()).map(|_| None).collect();
+    std::future::poll_fn(|cx| {
+        let mut all_done = true;
+        for (i, fut) in pinned.iter_mut().enumerate() {
+            if results[i].is_none() {
+                match fut.as_mut().poll(cx) {
+                    std::task::Poll::Ready(val) => results[i] = Some(val),
+                    std::task::Poll::Pending => all_done = false,
+                }
+            }
+        }
+        if all_done {
+            std::task::Poll::Ready(results.iter_mut().filter_map(Option::take).collect())
+        } else {
+            std::task::Poll::Pending
+        }
+    })
+    .await
+}
 
 impl Backend {
     pub fn new() -> Result<Self> {
@@ -273,11 +295,21 @@ impl Backend {
             client,
             org,
             progress: Mutex::new(Progress::new(&project)),
+            nodes: Mutex::new(HashMap::new()),
             project,
             team: env::var("ADO_TEAM_ID")
                 .unwrap_or_else(|_| "4271a5b2-919a-44ce-a87d-ef4c4d823a21".into()),
             sprint_root: env::var("ADO_SPRINT_ROOT").unwrap_or_else(|_| "Sprint".into()),
         })
+    }
+    fn remember_node(&self, wi: &Value) {
+        let wid = id(wi);
+        if wid > 0 {
+            self.nodes
+                .lock()
+                .unwrap()
+                .insert(wid, (self.summary(wi), parent(wi)));
+        }
     }
     fn begin_progress(&self, preserve_auth: bool) {
         let mut p = self.progress.lock().unwrap();
@@ -715,6 +747,16 @@ impl Backend {
         }
         let mut features: Vec<Value> = features.into_values().collect();
         features.sort_by_key(id);
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            nodes.clear();
+            for wi in all.values() {
+                let wid = id(wi);
+                if wid > 0 {
+                    nodes.insert(wid, (self.summary(wi), parent(wi)));
+                }
+            }
+        }
         self.step_done(
             "hierarchy",
             format!(
@@ -731,6 +773,7 @@ impl Backend {
     }
 
     async fn ancestors(&self, wi: &Value) -> Result<Vec<Value>> {
+        self.remember_node(wi);
         let mut result = Vec::new();
         let mut seen = HashSet::from([id(wi)]);
         let mut pid = parent(wi);
@@ -738,10 +781,16 @@ impl Backend {
             if !seen.insert(p) || result.len() >= 10 {
                 break;
             }
+            if let Some((summary, next_parent)) = self.nodes.lock().unwrap().get(&p).cloned() {
+                result.insert(0, summary);
+                pid = next_parent;
+                continue;
+            }
             let fetched = self.items(&[p], true, None).await?;
             let Some(item) = fetched.first() else {
                 break;
             };
+            self.remember_node(item);
             result.insert(0, self.summary(item));
             pid = parent(item);
         }
@@ -794,10 +843,7 @@ impl Backend {
             });
         }
         // Each failure remains visible on its own link, without hiding the rest of the ticket.
-        let mut prs = Vec::new();
-        for task in tasks {
-            prs.push(task.await);
-        }
+        let mut prs = join_all(tasks).await;
         prs.sort_by_key(|v| {
             (
                 match text(&v["status"]) {
@@ -818,8 +864,12 @@ impl Backend {
             self.p()
         );
         let (wi, comments) = tokio::try_join!(self.workitem(id), self.get(&comments_path))?;
-        let (ancestors, children) = tokio::try_join!(self.ancestors(&wi), self.child_items(&wi))?;
-        let prs = self.pull_requests(&wi).await;
+        let (ancestors, children, prs) = tokio::join!(
+            self.ancestors(&wi),
+            self.child_items(&wi),
+            self.pull_requests(&wi)
+        );
+        let (ancestors, children) = (ancestors?, children?);
         let f = &wi["fields"];
         let fields: Map<String, Value> = RICH
             .iter()
@@ -932,6 +982,11 @@ impl Backend {
                 e
             }
         })?;
+        if body.get("parentId").is_some() {
+            self.nodes.lock().unwrap().clear();
+        } else {
+            self.nodes.lock().unwrap().remove(&id);
+        }
         Ok(
             json!({"id":wi["id"],"rev":wi["rev"],"title":wi["fields"]["System.Title"],"state":wi["fields"]["System.State"],"iterationPath":wi["fields"]["System.IterationPath"]}),
         )
@@ -1240,6 +1295,7 @@ mod tests {
             team: "test-team".into(),
             sprint_root: "Sprint".into(),
             progress: Mutex::new(Progress::new("Test Project")),
+            nodes: Mutex::new(HashMap::new()),
         })
     }
     async fn respond(server: &MockServer, verb: &str, route: &str, value: Value) {

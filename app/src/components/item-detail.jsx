@@ -19,6 +19,96 @@ const FIELD_LABELS = {
   'Microsoft.VSTS.Common.AcceptanceCriteria': 'Acceptance criteria',
 };
 
+const detailCache = new Map();
+const inflightDetails = new Map();
+
+export function clearDetailCache() {
+  detailCache.clear();
+  inflightDetails.clear();
+}
+
+function fetchDetail(id, { force = false } = {}) {
+  if (!force && detailCache.has(id)) return Promise.resolve(detailCache.get(id));
+  if (!force && inflightDetails.has(id)) return inflightDetails.get(id);
+  const promise = api
+    .detail(id)
+    .then((d) => {
+      detailCache.set(id, d);
+      inflightDetails.delete(id);
+      return d;
+    })
+    .catch((e) => {
+      inflightDetails.delete(id);
+      throw e;
+    });
+  inflightDetails.set(id, promise);
+  return promise;
+}
+
+export function prefetchDetail(id) {
+  if (!id || detailCache.has(id) || inflightDetails.has(id)) return;
+  fetchDetail(id).catch(() => {});
+}
+
+function seedDetail(id, data, features) {
+  if (!id) return null;
+  if (detailCache.has(id)) return detailCache.get(id);
+  const item = data?.items.find((i) => i.id === id);
+  if (item) {
+    const baseEdit = item.url ? item.url.replace(/\/\d+$/, '') : 'https://msasg.visualstudio.com/SAN%20SA/_workitems/edit';
+    const ancestors = [...(item.chain || [])]
+      .reverse()
+      .map((a) => ({ ...a, url: `${baseEdit}/${a.id}` }));
+    return {
+      id: item.id,
+      url: item.url,
+      type: item.type,
+      title: item.title,
+      state: item.state,
+      iterationPath: item.iterationPath,
+      areaPath: data?.project || 'SAN SA',
+      tags: item.tags || [],
+      assignedTo: data?.me ? { id: data.me.id, name: data.me.name } : null,
+      changedDate: item.changedDate,
+      parent: ancestors.at(-1) || null,
+      ancestors,
+      childCount: item.childCount || 0,
+      children: [],
+      pullRequests: [],
+      fields: {},
+      markdown: [],
+      comments: [],
+      commentCount: 0,
+      partial: true,
+    };
+  }
+  const feature = features?.find((f) => f.id === id);
+  if (feature) {
+    return {
+      id: feature.id,
+      url: feature.url,
+      type: 'Feature',
+      title: feature.title,
+      state: feature.state,
+      iterationPath: feature.iterationPath,
+      areaPath: data?.project || 'SAN SA',
+      tags: [],
+      assignedTo: feature.owner ? { name: feature.owner } : null,
+      parent: null,
+      ancestors: [],
+      childCount: 0,
+      children: [],
+      pullRequests: [],
+      fields: {},
+      markdown: [],
+      comments: [],
+      commentCount: 0,
+      partial: true,
+    };
+  }
+  return null;
+}
+
 function fieldsFor(detail) {
   const show = ['System.Description'];
   if (detail.type === 'Bug' || detail.fields['Microsoft.VSTS.TCM.ReproSteps']) show.push('Microsoft.VSTS.TCM.ReproSteps');
@@ -75,7 +165,7 @@ function Hierarchy({ detail, item, features, onPick, disabled, onOpen }) {
         Hierarchy
       </SectionHeader>
       <HierarchyTree ancestors={detail.ancestors} self={detail} children={detail.children} onOpen={onOpen} />
-      {detail.ancestors.length === 0 && <MissingParent type={detail.type} className="mt-1.5" />}
+      {!detail.partial && detail.ancestors.length === 0 && <MissingParent type={detail.type} className="mt-1.5" />}
     </section>
   );
 }
@@ -451,7 +541,7 @@ function DetailSkeleton() {
 
 export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPatched, onClose }) {
   const { openItem } = useDetail();
-  const [detail, setDetail] = useState(null);
+  const [detail, setDetailState] = useState(() => seedDetail(id, data, features));
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const editors = useRef(new Set());
@@ -460,40 +550,68 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   const item = data?.items.find((i) => i.id === id);
   const who = (p) => (p?.id && p.id === data?.me?.id ? 'you' : p?.name);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setDetail(await api.detail(id));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const setDetail = useCallback((updater) => {
+    setDetailState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (next?.id && !next.partial) detailCache.set(next.id, next);
+      return next;
+    });
+  }, []);
+
+  const load = useCallback(
+    async ({ force: forceReload = false } = {}) => {
+      if (!id) return;
+      const hasCached = !forceReload && detailCache.has(id);
+      if (hasCached) setDetailState(detailCache.get(id));
+      setLoading(true);
+      setError(null);
+      try {
+        const fresh = await fetchDetail(id, { force: forceReload || hasCached });
+        setDetailState((cur) => (cur?.id && cur.id !== id ? cur : editors.current.size && !cur?.partial ? cur : fresh));
+      } catch (e) {
+        if (!hasCached) setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
-    setDetail(null);
+    setDetailState(seedDetail(id, data, features));
     setConfirming(false);
     editors.current = new Set();
     load();
-  }, [load]);
+    if (id && data?.items) {
+      const known = new Set(data.items.map((i) => i.id));
+      const ids = [...new Set([...document.querySelectorAll('[data-item-id]')].map((el) => Number(el.dataset.itemId)))].filter((n) => known.has(n));
+      const at = ids.indexOf(id);
+      if (at !== -1) {
+        if (ids[at + 1]) prefetchDetail(ids[at + 1]);
+        if (ids[at - 1]) prefetchDetail(ids[at - 1]);
+      }
+    }
+  }, [id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep state/sprint in the header in sync with board edits.
   useEffect(() => {
     if (item && detail && item.id === detail.id && (item.state !== detail.state || item.iterationPath !== detail.iterationPath)) {
       setDetail((d) => ({ ...d, state: item.state, iterationPath: item.iterationPath }));
     }
-  }, [item, detail]);
+  }, [item, detail, setDetail]);
 
   // Re-read the hierarchy after the parent is changed from the Feature picker.
   const parentId = item?.parentId;
   const lastParent = useRef(parentId);
   useEffect(() => {
-    if (lastParent.current !== parentId && detail?.id === id) api.detail(id).then((fresh) => setDetail((d) => (d?.id === id ? { ...d, ancestors: fresh.ancestors, parent: fresh.parent, rev: fresh.rev } : d)), () => {});
+    if (lastParent.current !== parentId && detail?.id === id) {
+      fetchDetail(id, { force: true }).then(
+        (fresh) => setDetail((d) => (d?.id === id ? { ...d, ancestors: fresh.ancestors, parent: fresh.parent, rev: fresh.rev } : d)),
+        () => {},
+      );
+    }
     lastParent.current = parentId;
-  }, [parentId, id, detail?.id]);
+  }, [parentId, id, detail?.id, setDetail]);
 
   const trackEditing = useCallback(
     (key) => (on) => {
@@ -514,7 +632,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   const body = useAction('edit', id, () => body.current?.querySelector('[data-detail-edit]')?.click());
 
   // A shortcut pressed on a card that needs this panel (e.g. P on a hovered card) runs once the ticket loads.
-  const loadedId = detail?.id;
+  const loadedId = detail?.partial ? null : detail?.id;
   useEffect(() => {
     if (!loadedId || loadedId !== id) return;
     const action = takeQueued(id);
@@ -712,7 +830,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                 <button
                   type="button"
                   className="ml-auto rounded-sm p-1 text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40"
-                  onClick={load}
+                  onClick={() => load({ force: true })}
                   disabled={loading}
                   aria-label="Reload from Azure DevOps"
                   title="Reload from Azure DevOps"
@@ -785,49 +903,85 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                   </dl>
                 </section>
 
-                <PullRequests
-                  key={`prs-${detail.id}`}
-                  id={detail.id}
-                  prs={detail.pullRequests || []}
-                  who={who}
-                  onLink={linkPullRequest}
-                  onUnlink={unlinkPullRequest}
-                  onEditingChange={tracker('pr-link')}
-                />
+                {error && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    Could not load #{detail.id}: {error}{' '}
+                    <button type="button" className="underline underline-offset-2" onClick={() => load({ force: true })}>
+                      Try again
+                    </button>
+                  </div>
+                )}
 
-                {fieldsFor(detail).map((ref) => (
-                  <FieldSection
-                    key={`${detail.id}-${ref}`}
-                    refName={ref}
-                    html={detail.fields[ref]}
-                    markdown={detail.markdown?.includes(ref)}
-                    onSave={(html) => saveField(ref, html)}
-                    onEditingChange={tracker(ref)}
-                  />
-                ))}
+                {detail.partial ? (
+                  <>
+                    <section aria-label="Pull requests">
+                      <SectionHeader>
+                        <span className="inline-flex items-center gap-1.5">
+                          <GitPullRequest className="size-3.5" /> Pull requests
+                        </span>
+                      </SectionHeader>
+                      <Skeleton className="h-8 w-full" />
+                    </section>
+                    <section>
+                      <SectionHeader>Description</SectionHeader>
+                      <Skeleton className="h-28 w-full" />
+                    </section>
+                    <section>
+                      <SectionHeader>
+                        <span className="inline-flex items-center gap-1.5">
+                          <MessageSquare className="size-3.5" /> Comments
+                        </span>
+                      </SectionHeader>
+                      <Skeleton className="h-14 w-full" />
+                    </section>
+                  </>
+                ) : (
+                  <>
+                    <PullRequests
+                      key={`prs-${detail.id}`}
+                      id={detail.id}
+                      prs={detail.pullRequests || []}
+                      who={who}
+                      onLink={linkPullRequest}
+                      onUnlink={unlinkPullRequest}
+                      onEditingChange={tracker('pr-link')}
+                    />
 
-                <section>
-                  <SectionHeader>
-                    <span className="inline-flex items-center gap-1.5">
-                      <MessageSquare className="size-3.5" /> Comments
-                      <span className="tabular-nums">{detail.commentCount}</span>
-                    </span>
-                  </SectionHeader>
-                  <NewComment key={`new-${detail.id}`} id={detail.id} onAdd={addComment} onEditingChange={tracker('new-comment')} />
-                  {detail.comments.length > 0 && (
-                    <ul className="mt-4 flex flex-col gap-4">
-                      {detail.comments.map((c) => (
-                        <Comment
-                          key={c.id}
-                          comment={c}
-                          mine={c.createdBy?.id === data?.me?.id}
-                          onSave={editComment}
-                          onEditingChange={tracker(`comment-${c.id}`)}
-                        />
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                    {fieldsFor(detail).map((ref) => (
+                      <FieldSection
+                        key={`${detail.id}-${ref}`}
+                        refName={ref}
+                        html={detail.fields[ref]}
+                        markdown={detail.markdown?.includes(ref)}
+                        onSave={(html) => saveField(ref, html)}
+                        onEditingChange={tracker(ref)}
+                      />
+                    ))}
+
+                    <section>
+                      <SectionHeader>
+                        <span className="inline-flex items-center gap-1.5">
+                          <MessageSquare className="size-3.5" /> Comments
+                          <span className="tabular-nums">{detail.commentCount}</span>
+                        </span>
+                      </SectionHeader>
+                      <NewComment key={`new-${detail.id}`} id={detail.id} onAdd={addComment} onEditingChange={tracker('new-comment')} />
+                      {detail.comments.length > 0 && (
+                        <ul className="mt-4 flex flex-col gap-4">
+                          {detail.comments.map((c) => (
+                            <Comment
+                              key={c.id}
+                              comment={c}
+                              mine={c.createdBy?.id === data?.me?.id}
+                              onSave={editComment}
+                              onEditingChange={tracker(`comment-${c.id}`)}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  </>
+                )}
               </div>
             </div>
           </>
