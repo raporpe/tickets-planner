@@ -24,8 +24,10 @@ import { buildColumns, canBeInSprint, columnKeyOf, isDone } from '@/lib/planning
 
 const CARD_W = 272;
 const PAD = 12;
-const GAP = 10;
-const EST_H = 130;
+const GAP = 16; // 272 + 16 = 288 (8 * 36px grid units)
+const SNAP_X = 36;
+const SNAP_Y = 18;
+const EST_H = 126;
 const NOTE_W = 288;
 const SLACK = 180; // free space below the lowest card, so there is always room to drop
 const SLACK_X = 320; // and to the right of the rightmost one, so the board can grow sideways
@@ -36,9 +38,12 @@ const legacyUsable = (viewW, w) => Math.max(0, Math.max(viewW, LEGACY_W) - w - P
 const NO_DRAG = 'input, textarea, select, [role="combobox"], [aria-haspopup], [data-no-drag]';
 const ORDER = (a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCompare(b.type) || b.id - a.id;
 
+const snapX = (px) => Math.max(PAD, PAD + Math.round((px - PAD) / SNAP_X) * SNAP_X);
+const snapY = (py) => Math.max(PAD, PAD + Math.round((py - PAD) / SNAP_Y) * SNAP_Y);
+
 /**
- * Where each card sits on the whiteboard. Cards you have moved keep their spot; the rest flow into
- * evenly spread lanes below them, so new arrivals never land on top of a group you made.
+ * Where each card sits on the whiteboard. Cards you have moved keep their spot (snapped to the 36×18 grid);
+ * the rest flow into evenly spread grid lanes below them, so new arrivals never land on top of a group you made.
  */
 function layoutBoard(list, colKey, viewW, heights, layout) {
   const lanes = Math.max(1, Math.floor((viewW - PAD * 2 + GAP) / (CARD_W + GAP)));
@@ -50,18 +55,20 @@ function layoutBoard(list, colKey, viewW, heights, layout) {
   for (const item of list) {
     const s = layout[item.id];
     if (s?.col === colKey) {
-      const p = { x: s.px ?? PAD + (s.x ?? 0) * legacy, y: s.y, z: s.z ?? 1 };
+      const rawX = s.px ?? PAD + (s.x ?? 0) * legacy;
+      const p = { x: snapX(rawX), y: snapY(s.y ?? PAD), z: s.z ?? 1 };
       pos.set(item.id, p);
       bottom = Math.max(bottom, p.y + (heights[item.id] ?? EST_H));
       right = Math.max(right, p.x + CARD_W);
     } else free.push(item);
   }
   const laneX = (i) => PAD + i * (CARD_W + GAP);
-  const laneY = Array(lanes).fill(bottom ? bottom + GAP * 3 : PAD);
+  const laneY = Array(lanes).fill(bottom ? snapY(bottom + SNAP_Y * 2) : PAD);
   for (const item of free) {
     const i = laneY.indexOf(Math.min(...laneY));
-    pos.set(item.id, { x: laneX(i), y: laneY[i], z: 0 });
-    laneY[i] += (heights[item.id] ?? EST_H) + GAP;
+    const y = snapY(laneY[i]);
+    pos.set(item.id, { x: laneX(i), y, z: 0 });
+    laneY[i] = snapY(y + (heights[item.id] ?? EST_H) + SNAP_Y);
     right = Math.max(right, laneX(i) + CARD_W);
   }
   return { pos, cardW: CARD_W, right, height: Math.max(bottom, ...laneY) + SLACK };
@@ -114,7 +121,12 @@ const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons
     <div
       ref={ref}
       onPointerDown={(e) => onStart(e, item)}
-      className={cn(free ? 'absolute' : 'select-none', 'touch-none', free && animate && 'transition-[left,top] duration-200 ease-out', hidden && 'opacity-0')}
+      className={cn(
+        free ? 'absolute' : 'select-none',
+        'touch-none',
+        free && animate && 'transition-[left,top] duration-240 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+        hidden && 'opacity-0',
+      )}
       style={free ? { left: x, top: y, width: w, zIndex: z } : undefined}
     >
       {/* Re-keyed on every drop so the settle animation replays even when the same card lands twice. */}
@@ -131,7 +143,7 @@ const PlanCard = memo(function PlanCard({ item, data, features, pending, reasons
  * A free-floating note on the whiteboard: plain text you can drop next to a group of cards.
  * Drag to move, double-click to edit, empty it (or press ×) to delete.
  */
-function BoardNote({ id, note, left, top, editing, onEdit, onChange, onRemove, toPos }) {
+function BoardNote({ id, note, left, top, zoom = 1, editing, onEdit, onChange, onRemove, toPos }) {
   const el = useRef(null);
   const startMove = (e) => {
     if (editing || e.button !== 0 || e.target.closest('button')) return;
@@ -140,9 +152,9 @@ function BoardNote({ id, note, left, top, editing, onEdit, onChange, onRemove, t
     const sy = e.clientY;
     let moved = false;
     const move = (ev) => {
-      const dx = ev.clientX - sx;
-      const dy = ev.clientY - sy;
-      if (!moved && Math.hypot(dx, dy) < 4) return;
+      const dx = (ev.clientX - sx) / zoom;
+      const dy = (ev.clientY - sy) / zoom;
+      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
       moved = true;
       el.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
     };
@@ -151,7 +163,9 @@ function BoardNote({ id, note, left, top, editing, onEdit, onChange, onRemove, t
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       if (el.current) el.current.style.transform = '';
-      if (moved && ev.type === 'pointerup') onChange(id, toPos(left + ev.clientX - sx, top + ev.clientY - sy));
+      if (moved && ev.type === 'pointerup') {
+        onChange(id, toPos(left + (ev.clientX - sx) / zoom, top + (ev.clientY - sy) / zoom));
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -209,13 +223,20 @@ function BoardNote({ id, note, left, top, editing, onEdit, onChange, onRemove, t
   );
 }
 
-const ghostTransform = (x, y) => `translate3d(${x}px, ${y}px, 0)`;
+const MIN_ZOOM = 0.45;
+const MAX_ZOOM = 1.6;
+const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 1000) / 1000));
+const ghostTransform = (x, y, z = 1) => `translate3d(${x}px, ${y}px, 0) scale(${z})`;
 
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
   const { layout, place, clearColumn } = useBoardLayout();
   const { notes, addNote, updateNote, removeNote } = useBoardNotes();
   const [editingNote, setEditingNote] = useState(null);
   const [drag, setDrag] = useState(null);
+  const [snapPreview, setSnapPreview] = useState(null);
+  const [glide, setGlide] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
   const [backlogOpen, setBacklogOpen] = useState(false);
@@ -269,6 +290,49 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     const ro = new ResizeObserver(([e]) => setBoardWidth(Math.round(e.contentRect.width)));
     ro.observe(board.current);
     return () => ro.disconnect();
+  }, [next?.key]);
+
+  // Trackpad two-finger swipe pans; trackpad pinch (ctrlKey) and physical mouse wheel zoom centered on cursor.
+  useEffect(() => {
+    const el = board.current;
+    if (!el) return undefined;
+    let trackpadPanUntil = 0;
+
+    const onWheel = (e) => {
+      const now = performance.now();
+      const isPinch = e.ctrlKey || e.metaKey;
+      if (!isPinch) {
+        const looksLikeTrackpad =
+          Math.abs(e.deltaX) > 0 ||
+          (e.deltaMode === 0 && Math.abs(e.deltaY) < 50) ||
+          (typeof e.wheelDeltaY === 'number' && Math.abs(e.wheelDeltaY) % 120 !== 0);
+        if (looksLikeTrackpad || now < trackpadPanUntil) {
+          trackpadPanUntil = now + 220;
+          return; // allow native two-finger pan
+        }
+      }
+      e.preventDefault();
+      const oldZ = zoomRef.current;
+      const factor = isPinch ? Math.exp(-e.deltaY * 0.01) : Math.exp(-Math.sign(e.deltaY) * 0.1);
+      const newZ = clampZoom(oldZ * factor);
+      if (newZ === oldZ) return;
+
+      const r = el.getBoundingClientRect();
+      const vx = e.clientX - r.left;
+      const vy = e.clientY - r.top;
+      const wx = (el.scrollLeft + vx) / oldZ;
+      const wy = (el.scrollTop + vy) / oldZ;
+
+      zoomRef.current = newZ;
+      setZoom(newZ);
+      requestAnimationFrame(() => {
+        el.scrollLeft = Math.max(0, wx * newZ - vx);
+        el.scrollTop = Math.max(0, wy * newZ - vy);
+      });
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, [next?.key]);
 
   useEffect(() => {
@@ -337,9 +401,12 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     if (col.key === next?.key && computed.current) {
       const el = board.current;
       const r = el.getBoundingClientRect();
+      const z = d.z || zoomRef.current;
       const { pos } = computed.current;
-      const px = Math.max(PAD, Math.round(x - r.left - d.dx + el.scrollLeft));
-      const py = Math.max(PAD, y - r.top - d.dy + el.scrollTop);
+      const rawPx = Math.max(PAD, Math.round((x - r.left + el.scrollLeft) / z - d.dx));
+      const rawPy = Math.max(PAD, Math.round((y - r.top + el.scrollTop) / z - d.dy));
+      const px = snapX(rawPx);
+      const py = snapY(rawPy);
       // Freeze everything else on the board where it is now, so nothing shuffles around the drop.
       const entries = {};
       pos.forEach((p, id) => {
@@ -347,7 +414,14 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
       });
       const topZ = Math.max(0, ...Object.values(layout).map((v) => v.z ?? 0));
       entries[d.id] = { col: col.key, px, y: py, z: topZ + 1 };
+      // Seed at the exact release position for 1 frame so CSS transition glides softly into the snapped grid cell
+      setGlide({ id: d.id, x: rawPx, y: rawPy, animate: false });
       place(entries);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setGlide(null);
+        });
+      });
     }
     if (item.iterationPath !== col.path) onUpdate(item, { iterationPath: col.path });
   };
@@ -355,19 +429,43 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const startDrag = (e, item) => {
     if (e.button !== 0 || pendingIds.has(item.id) || e.target.closest(NO_DRAG)) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const d = { id: item.id, dx: e.clientX - rect.left, dy: e.clientY - rect.top, w: rect.width, sx: e.clientX, sy: e.clientY };
+    const onBoard = board.current?.contains(e.currentTarget);
+    const z = onBoard ? zoomRef.current : 1;
+    const d = {
+      id: item.id,
+      dx: (e.clientX - rect.left) / z,
+      dy: (e.clientY - rect.top) / z,
+      w: onBoard ? CARD_W : rect.width,
+      z,
+      sx: e.clientX,
+      sy: e.clientY,
+    };
     let started = false;
     let over;
     let frame = 0;
     let last = null;
-    // Pointer moves only touch the floating card's transform; React re-renders just when the drop target changes.
+    // Pointer moves only touch the floating card's transform; React re-renders just when the drop target or grid cell changes.
     const paint = () => {
       frame = 0;
-      if (ghost.current) ghost.current.style.transform = ghostTransform(last.clientX - d.dx, last.clientY - d.dy);
+      const curZ = zoomRef.current;
+      if (ghost.current) {
+        ghost.current.style.transform = ghostTransform(last.clientX - d.dx * curZ, last.clientY - d.dy * curZ, curZ);
+      }
       const o = targetAt(last.clientX, last.clientY);
       if (o !== over) {
         over = o;
         setDrag((cur) => cur && { ...cur, over: o });
+      }
+      if (o === next?.key && board.current) {
+        const el = board.current;
+        const r = el.getBoundingClientRect();
+        const rawPx = Math.max(PAD, Math.round((last.clientX - r.left + el.scrollLeft) / curZ - d.dx));
+        const rawPy = Math.max(PAD, Math.round((last.clientY - r.top + el.scrollTop) / curZ - d.dy));
+        const gx = snapX(rawPx);
+        const gy = snapY(rawPy);
+        setSnapPreview((prev) => (prev && prev.x === gx && prev.y === gy ? prev : { x: gx, y: gy, h: heights[d.id] ?? EST_H }));
+      } else {
+        setSnapPreview((prev) => (prev ? null : prev));
       }
     };
     const move = (ev) => {
@@ -388,6 +486,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       document.body.style.cursor = '';
+      setSnapPreview(null);
       if (!started) return;
       lastDrop.current = d.id;
       drops.current += 1;
@@ -431,15 +530,22 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   computed.current = placed;
 
   const noteLegacy = legacyUsable(boardWidth, NOTE_W);
-  const noteLeft = (n) => n.px ?? PAD + (n.x ?? 0) * noteLegacy;
-  const notePos = useCallback((px, py) => ({ px: Math.max(PAD, Math.round(px)), y: Math.max(PAD, Math.round(py)) }), []);
+  const noteLeft = (n) => snapX(n.px ?? PAD + (n.x ?? 0) * noteLegacy);
+  const notePos = useCallback((px, py) => ({ px: snapX(px), y: snapY(py) }), []);
   const boardNotes = next ? Object.entries(notes).filter(([, n]) => n.col === next.key) : [];
   const boardHeight = placed ? Math.max(placed.height, ...boardNotes.map(([, n]) => n.y + 120 + SLACK)) : 0;
   const canvasWidth = placed ? Math.max(boardWidth, placed.right + SLACK_X, ...boardNotes.map(([, n]) => noteLeft(n) + NOTE_W + SLACK_X)) : 0;
   const addNoteAt = (e) => {
     if (e.target.closest('[data-card-id], [data-note]')) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    setEditingNote(addNote({ col: next.key, ...notePos(e.clientX - r.left - 8, e.clientY - r.top - 14) }));
+    const el = board.current;
+    const r = el.getBoundingClientRect();
+    const z = zoomRef.current;
+    setEditingNote(
+      addNote({
+        col: next.key,
+        ...notePos((e.clientX - r.left + el.scrollLeft) / z - 8, (e.clientY - r.top + el.scrollTop) / z - 14),
+      }),
+    );
   };
 
   // Dragging empty space pans the whiteboard, like a canvas.
@@ -497,6 +603,20 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
               </div>
               <ColumnTitle col={next} />
               <div className="ml-auto flex items-center gap-1">
+                {Math.round(zoom * 100) !== 100 && (
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-muted-foreground tabular-nums"
+                    title="Reset zoom to 100%"
+                    onClick={() => {
+                      zoomRef.current = 1;
+                      setZoom(1);
+                    }}
+                  >
+                    {Math.round(zoom * 100)}%
+                  </Button>
+                )}
                 {boardPath && boardPath !== defaultSprint?.path && (
                   <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setBoardPath(null)}>
                     Back to {defaultSprint.timeFrame === 'current' ? 'current' : defaultSprint.name}
@@ -536,47 +656,68 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
             <div ref={board} className="whiteboard-scroll relative min-h-0 flex-1 overflow-auto">
               <div
                 className="whiteboard-dots relative isolate min-h-full cursor-grab select-none"
-                style={{ height: boardHeight, width: canvasWidth || undefined }}
+                style={{
+                  height: Math.ceil(boardHeight * zoom),
+                  width: canvasWidth ? Math.ceil(canvasWidth * zoom) : undefined,
+                  backgroundSize: `${18 * zoom}px ${18 * zoom}px`,
+                }}
                 onPointerDown={startPan}
                 onDoubleClick={addNoteAt}
               >
-                {nextList.length === 0 && boardNotes.length === 0 && (
-                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
-                )}
-                {boardNotes.map(([id, n]) => (
-                  <BoardNote
-                    key={id}
-                    id={id}
-                    note={n}
-                    left={noteLeft(n)}
-                    top={n.y}
-                    editing={editingNote === id}
-                    onEdit={setEditingNote}
-                    onChange={updateNote}
-                    onRemove={removeNote}
-                    toPos={notePos}
-                  />
-                ))}
-                {nextList.map((item) => {
-                  const p = placed.pos.get(item.id);
-                  return (
-                    <PlanCard
-                      key={item.id}
-                      {...cardProps(item)}
-                      onStart={onStart}
-                      register={register}
-                      hidden={drag?.id === item.id}
-                      settle={lastDrop.current === item.id ? drops.current : 0}
-                      free
-                      x={p.x}
-                      y={p.y}
-                      w={placed.cardW}
-                      z={p.z}
-                      animate={lastDrop.current !== item.id}
+                <div
+                  className="relative origin-top-left"
+                  style={{
+                    height: boardHeight,
+                    width: canvasWidth || undefined,
+                    transform: zoom !== 1 ? `scale(${zoom})` : undefined,
+                  }}
+                >
+                  {nextList.length === 0 && boardNotes.length === 0 && (
+                    <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
+                  )}
+                  {boardNotes.map(([id, n]) => (
+                    <BoardNote
+                      key={id}
+                      id={id}
+                      note={n}
+                      left={noteLeft(n)}
+                      top={n.y}
+                      zoom={zoom}
+                      editing={editingNote === id}
+                      onEdit={setEditingNote}
+                      onChange={updateNote}
+                      onRemove={removeNote}
+                      toPos={notePos}
                     />
-                  );
-                })}
-
+                  ))}
+                  {snapPreview && (
+                    <div
+                      aria-hidden
+                      style={{ left: snapPreview.x, top: snapPreview.y, width: placed.cardW, height: snapPreview.h }}
+                      className="pointer-events-none absolute rounded-lg border border-dashed border-primary/40 bg-primary/[0.04] transition-[left,top,height] duration-120 ease-out"
+                    />
+                  )}
+                  {nextList.map((item) => {
+                    const p = placed.pos.get(item.id);
+                    const isGliding = glide?.id === item.id;
+                    return (
+                      <PlanCard
+                        key={item.id}
+                        {...cardProps(item)}
+                        onStart={onStart}
+                        register={register}
+                        hidden={drag?.id === item.id}
+                        settle={lastDrop.current === item.id ? drops.current : 0}
+                        free
+                        x={isGliding ? glide.x : p.x}
+                        y={isGliding ? glide.y : p.y}
+                        w={placed.cardW}
+                        z={p.z}
+                        animate={!isGliding}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </section>
@@ -758,8 +899,11 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
         createPortal(
           <div
             ref={ghost}
-            className="pointer-events-none fixed top-0 left-0 z-50 will-change-transform"
-            style={{ width: drag.w, transform: ghostTransform(drag.x - drag.dx, drag.y - drag.dy) }}
+            className="pointer-events-none fixed top-0 left-0 z-50 origin-top-left will-change-transform"
+            style={{
+              width: drag.w,
+              transform: ghostTransform(drag.x - drag.dx * zoom, drag.y - drag.dy * zoom, zoom),
+            }}
           >
             <div className="animate-card-pickup motion-reduce:animate-none" style={{ transformOrigin: `${drag.dx}px ${drag.dy}px` }}>
               <WorkItemCard {...cardProps(dragged)} className="cursor-grabbing" />

@@ -18,6 +18,7 @@ export const TICKET_ACTIONS = [
 
 export const NAV_ACTIONS = [
   { id: 'plan', label: 'Go to My sprint', keys: ['G', 'S'] },
+  { id: 'standup', label: 'Go to Stand Up', keys: ['G', 'U'] },
   { id: 'features', label: 'Go to By Feature', keys: ['G', 'F'] },
   { id: 'attention', label: 'Go to Hygiene', keys: ['G', 'H'] },
 ];

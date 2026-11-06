@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, TriangleAlert, Unlink, X, Zap } from 'lucide-react';
+import { ExternalLink, Flame, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, TriangleAlert, Unlink, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -84,7 +84,7 @@ function seedDetail(id, data, features) {
       iterationPath: item.iterationPath,
       areaPath: data?.project || 'SAN SA',
       tags: item.tags || [],
-      assignedTo: data?.me ? { id: data.me.id, name: data.me.name } : null,
+      assignedTo: item.assignedTo || (data?.me ? { id: data.me.id, name: data.me.name } : null),
       changedDate: item.changedDate,
       parent: ancestors.at(-1) || null,
       ancestors,
@@ -388,7 +388,7 @@ function TagsEditor({ detail, disabled, onSaveTags }) {
               title="Controlled by the Sprint-Unplanned checkbox above"
               className="inline-flex h-6 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-xs font-medium text-amber-900 select-none dark:border-amber-400/35 dark:bg-amber-400/15 dark:text-amber-200"
             >
-              <Zap className="size-3 fill-current" />
+              <Flame className="size-3 fill-current" />
               {t}
             </span>
           ) : (
@@ -1121,7 +1121,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                     disabled={pending || savingTags}
                     onCheckedChange={(checked) => toggleUnplanned(!!checked)}
                   />
-                  <Zap className={cn('size-3', unplanned ? 'fill-current text-amber-600 dark:text-amber-300' : 'text-muted-foreground')} />
+                  <Flame className={cn('size-3', unplanned ? 'fill-current text-amber-600 dark:text-amber-300' : 'text-muted-foreground')} />
                   <span>Sprint-Unplanned</span>
                 </label>
               </div>

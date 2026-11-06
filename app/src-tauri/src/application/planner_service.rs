@@ -7,8 +7,9 @@ use crate::{
         sprint::map_sprints,
         work_item::{
             add, array, children, comment, done, id, is_closed_or_removed, is_sprintable,
-            normalize_tags, overview_query, parent, person, summary, tags, test_revision, text,
-            validate_priority, weeks_carried, COMMENTS_API, RICH,
+            normalize_tags, overview_query, parent, person, standup_query, summary, tags,
+            test_revision, text, validate_priority, weeks_carried, COMMENTS_API, RICH,
+            STANDUP_USERS,
         },
     },
     infrastructure::ado::AdoClient,
@@ -47,6 +48,8 @@ pub struct PlannerService {
     ado: AdoClient,
     progress: Mutex<Progress>,
     nodes: Mutex<HashMap<u64, (Value, Option<u64>)>>,
+    me_email: Mutex<String>,
+    board_state: Mutex<Value>,
 }
 
 impl PlannerService {
@@ -57,6 +60,8 @@ impl PlannerService {
             ado,
             progress: Mutex::new(progress),
             nodes: Mutex::new(HashMap::new()),
+            me_email: Mutex::new(String::new()),
+            board_state: Mutex::new(json!({})),
         })
     }
 
@@ -68,6 +73,8 @@ impl PlannerService {
             ado,
             progress: Mutex::new(progress),
             nodes: Mutex::new(HashMap::new()),
+            me_email: Mutex::new(String::new()),
+            board_state: Mutex::new(json!({})),
         })
     }
 
@@ -203,37 +210,148 @@ impl PlannerService {
         Ok(json!({"Task":task,"Bug":bug,"User Story":story}))
     }
 
-    async fn settings(&self) -> Value {
-        match self
+    fn email_to_doc_id(email: &str) -> String {
+        email
+            .split('@')
+            .next()
+            .unwrap_or(email)
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect()
+    }
+
+    async fn resolve_me_identity(&self, me_hint: Option<&Value>) -> (String, String) {
+        if let Some(me) = me_hint {
+            let acc = text(&me["authenticatedUser"]["properties"]["Account"]["$value"]);
+            let email = if !acc.is_empty() {
+                acc.to_owned()
+            } else {
+                text(&me["authenticatedUser"]["uniqueName"]).to_owned()
+            };
+            if !email.is_empty() {
+                *self.me_email.lock().unwrap() = email.clone();
+                return (email.clone(), Self::email_to_doc_id(&email));
+            }
+        }
+        let cached = self.me_email.lock().unwrap().clone();
+        if !cached.is_empty() {
+            return (cached.clone(), Self::email_to_doc_id(&cached));
+        }
+        if let Ok(me) = self.ado.get("/_apis/connectionData").await {
+            let acc = text(&me["authenticatedUser"]["properties"]["Account"]["$value"]);
+            let email = if !acc.is_empty() {
+                acc.to_owned()
+            } else {
+                text(&me["authenticatedUser"]["uniqueName"]).to_owned()
+            };
+            if !email.is_empty() {
+                *self.me_email.lock().unwrap() = email.clone();
+                return (email.clone(), Self::email_to_doc_id(&email));
+            }
+        }
+        ("me".to_owned(), "me".to_owned())
+    }
+
+    async fn settings(&self, me_hint: Option<&Value>) -> Value {
+        let (email, doc_id) = self.resolve_me_identity(me_hint).await;
+        let doc_url = format!(
+            "{}/{doc_id}?api-version=3.1-preview.1",
+            self.ado.extmgmt_boards_url()
+        );
+        if let Ok(doc) = self.ado.get(&doc_url).await {
+            let state = json!({
+                "layout": doc.get("layout").cloned().unwrap_or(Value::Null),
+                "notes": doc.get("notes").cloned().unwrap_or(Value::Null),
+                "prefs": doc.get("prefs").cloned().unwrap_or(Value::Null),
+            });
+            *self.board_state.lock().unwrap() = state.clone();
+            return state;
+        }
+        // One-time transparent migration from legacy /me/TicketsPlanner if present
+        if let Ok(legacy) = self
             .ado
             .get("/_apis/Settings/Entries/me/TicketsPlanner?api-version=7.1-preview.1")
             .await
         {
-            Ok(v) if v["value"].is_object() => v["value"].clone(),
-            _ => json!({}),
+            if legacy["value"].is_object() && !legacy["value"].as_object().unwrap().is_empty() {
+                let migrated = legacy["value"].clone();
+                *self.board_state.lock().unwrap() = migrated.clone();
+                let put_url = format!("{}?api-version=3.1-preview.1", self.ado.extmgmt_boards_url());
+                let doc = json!({
+                    "id": doc_id,
+                    "__etag": -1,
+                    "email": email.to_lowercase(),
+                    "layout": migrated.get("layout").cloned().unwrap_or(Value::Null),
+                    "notes": migrated.get("notes").cloned().unwrap_or(Value::Null),
+                    "prefs": migrated.get("prefs").cloned().unwrap_or(Value::Null),
+                    "updatedAt": Utc::now().to_rfc3339()
+                });
+                let _ = self.ado.request_json("PUT", &put_url, Some(doc), false).await;
+                return migrated;
+            }
+        }
+        json!({})
+    }
+
+    async fn shared_boards(&self) -> Value {
+        let url = format!("{}?api-version=3.1-preview.1", self.ado.extmgmt_boards_url());
+        match self.ado.get(&url).await {
+            Ok(v) => {
+                let mut map = Map::new();
+                for doc in array(&v["value"]) {
+                    let entry = json!({
+                        "layout": doc["layout"],
+                        "notes": doc["notes"],
+                        "prefs": doc["prefs"],
+                        "updatedAt": doc["updatedAt"]
+                    });
+                    if let Some(email) = doc["email"].as_str().filter(|s| !s.is_empty()) {
+                        map.insert(email.to_lowercase(), entry.clone());
+                    }
+                    if let Some(id) = doc["id"].as_str().filter(|s| !s.is_empty()) {
+                        map.insert(id.to_lowercase(), entry);
+                    }
+                }
+                Value::Object(map)
+            }
+            Err(_) => json!({}),
         }
     }
 
     async fn save_settings(&self, body: &Value) -> Result<Value> {
-        let mut entries = Map::new();
-        for key in ["layout", "notes", "prefs"] {
-            if let Some(val) = body.get(key) {
-                if !val.is_null() {
-                    entries.insert(format!("TicketsPlanner/{key}"), val.clone());
+        let mut changed = false;
+        let merged = {
+            let mut cur = self.board_state.lock().unwrap();
+            if !cur.is_object() {
+                *cur = json!({});
+            }
+            let obj = cur.as_object_mut().unwrap();
+            for key in ["layout", "notes", "prefs"] {
+                if let Some(val) = body.get(key) {
+                    if !val.is_null() {
+                        obj.insert(key.to_owned(), val.clone());
+                        changed = true;
+                    }
                 }
             }
-        }
-        if entries.is_empty() {
+            cur.clone()
+        };
+        if !changed {
             return Ok(json!({"ok":true,"unchanged":true}));
         }
-        self.ado
-            .request_json(
-                "PATCH",
-                "/_apis/Settings/Entries/me?api-version=7.1-preview.1",
-                Some(Value::Object(entries)),
-                false,
-            )
-            .await?;
+        let (email, doc_id) = self.resolve_me_identity(None).await;
+        let doc = json!({
+            "id": doc_id,
+            "__etag": -1,
+            "email": email.to_lowercase(),
+            "layout": merged.get("layout").cloned().unwrap_or(Value::Null),
+            "notes": merged.get("notes").cloned().unwrap_or(Value::Null),
+            "prefs": merged.get("prefs").cloned().unwrap_or(Value::Null),
+            "updatedAt": Utc::now().to_rfc3339()
+        });
+        let url = format!("{}?api-version=3.1-preview.1", self.ado.extmgmt_boards_url());
+        self.ado.request_json("PUT", &url, Some(doc), false).await?;
         Ok(json!({"ok":true}))
     }
 
@@ -285,14 +403,14 @@ impl PlannerService {
         let board_flow = async {
             let t_board = Instant::now();
             self.step_active("board", "Fetching Features board columns & state rules…");
-            let (board, me, columns, states, settings) = tokio::join!(
+            let (board, me, columns, states) = tokio::join!(
                 self.ado.get(&board_path),
                 self.ado.get("/_apis/connectionData"),
                 self.feature_columns(),
-                self.states(),
-                self.settings()
+                self.states()
             );
             let (board, me, columns, states) = (board?, me?, columns?, states?);
+            let settings = self.settings(Some(&me)).await;
             let board_count = array(&board["workItems"]).len();
             let col_count = array(&columns).len();
             self.step_done(
@@ -401,6 +519,7 @@ impl PlannerService {
                     "state":f["System.State"],
                     "priority":f["Microsoft.VSTS.Common.Priority"],
                     "iterationPath":f["System.IterationPath"],
+                    "assignedTo":person(&f["System.AssignedTo"]),
                     "tags":item_tags,
                     "weeksCarried":weeks_carried(&item_tags),
                     "changedDate":f["System.ChangedDate"],
@@ -446,6 +565,7 @@ impl PlannerService {
                 }
             }
         }
+        let (me_email, _) = self.resolve_me_identity(Some(&me)).await;
         self.step_done(
             "hierarchy",
             format!(
@@ -455,7 +575,11 @@ impl PlannerService {
             t_hierarchy,
         );
         Ok(json!({
-            "me":{"name":me["authenticatedUser"]["providerDisplayName"],"id":me["authenticatedUser"]["id"]},
+            "me":{
+                "name":me["authenticatedUser"]["providerDisplayName"],
+                "id":me["authenticatedUser"]["id"],
+                "email":me_email
+            },
             "org":self.ado.org(),
             "project":self.ado.project(),
             "backlogPath":self.ado.backlog_path(),
@@ -465,6 +589,150 @@ impl PlannerService {
             "items":items,
             "states":states,
             "settings":settings,
+            "generatedAt":Utc::now().to_rfc3339()
+        }))
+    }
+
+    async fn standup(&self, query_str: &str) -> Result<Value> {
+        let mut requested_sprint: Option<String> = None;
+        for (k, v) in url::form_urlencoded::parse(query_str.as_bytes()) {
+            if k == "sprint" && !v.trim().is_empty() {
+                requested_sprint = Some(v.trim().to_owned());
+            }
+        }
+        let users: Vec<String> = STANDUP_USERS.iter().map(|s| (*s).to_owned()).collect();
+        let wiql_path = format!("/{}/_apis/wit/wiql?api-version=7.1", self.ado.project_encoded());
+        let board_path = format!(
+            "/{}/{}/_apis/work/backlogs/Microsoft.FeatureCategory/workItems?api-version=7.1",
+            self.ado.project_encoded(),
+            enc(self.ado.team())
+        );
+        let (res, boards) = tokio::join!(
+            async {
+                tokio::try_join!(
+                    self.sprints(),
+                    self.ado.get(&board_path),
+                    self.feature_columns()
+                )
+            },
+            self.shared_boards()
+        );
+        let (sprints, board, columns) = res?;
+        let sprint_path = match requested_sprint {
+            Some(path) => path,
+            None => array(&sprints)
+                .iter()
+                .find(|s| text(&s["timeFrame"]) == "current")
+                .map(|s| text(&s["path"]).to_owned())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| self.ado.backlog_path()),
+        };
+        let query = standup_query(&users, &sprint_path);
+        let q = self
+            .ado
+            .request_json("POST", &wiql_path, Some(json!({"query":query})), false)
+            .await?;
+        let ids: Vec<u64> = array(&q["workItems"]).iter().map(id).collect();
+        let raw_items = self.items(&ids, true, None).await?;
+
+        let mut all: HashMap<u64, Value> =
+            raw_items.iter().map(|wi| (id(wi), wi.clone())).collect();
+        let mut frontier: Vec<u64> = raw_items
+            .iter()
+            .filter_map(parent)
+            .filter(|pid| !all.contains_key(pid))
+            .collect();
+        for _ in 0..6 {
+            if frontier.is_empty() {
+                break;
+            }
+            let fetched = self.items(&frontier, true, None).await?;
+            all.extend(fetched.iter().map(|wi| (id(wi), wi.clone())));
+            frontier = fetched
+                .iter()
+                .filter(|wi| wi["fields"]["System.WorkItemType"] != "Feature")
+                .filter_map(parent)
+                .filter(|pid| !all.contains_key(pid))
+                .collect();
+        }
+        let board_ids: Vec<u64> = array(&board["workItems"])
+            .iter()
+            .filter_map(|wi| wi["target"]["id"].as_u64())
+            .collect();
+        let board_set: HashSet<u64> = board_ids.iter().copied().collect();
+        let mut features: HashMap<u64, Value> = HashMap::new();
+        let items: Vec<Value> = raw_items
+            .iter()
+            .map(|wi| {
+                let f = &wi["fields"];
+                let mut chain = Vec::new();
+                let mut feature_id = None;
+                let mut on_board = false;
+                let mut cur = wi;
+                for _ in 0..6 {
+                    let Some(p) = parent(cur).and_then(|pid| all.get(&pid)) else {
+                        break;
+                    };
+                    cur = p;
+                    chain.push(json!({
+                        "id":cur["id"],
+                        "type":cur["fields"]["System.WorkItemType"],
+                        "title":cur["fields"]["System.Title"],
+                        "state":cur["fields"]["System.State"]
+                    }));
+                    if cur["fields"]["System.WorkItemType"] == "Feature" {
+                        let fid = id(cur);
+                        feature_id = Some(fid);
+                        on_board = self.is_on_board(cur, &board_set);
+                        features
+                            .entry(fid)
+                            .or_insert_with(|| self.feature(cur, on_board, &columns));
+                        break;
+                    }
+                }
+                let item_tags = tags(f);
+                let item_children = children(wi);
+                json!({
+                    "id":wi["id"],
+                    "type":f["System.WorkItemType"],
+                    "title":f["System.Title"],
+                    "state":f["System.State"],
+                    "priority":f["Microsoft.VSTS.Common.Priority"],
+                    "iterationPath":f["System.IterationPath"],
+                    "assignedTo":person(&f["System.AssignedTo"]),
+                    "tags":item_tags,
+                    "weeksCarried":weeks_carried(&item_tags),
+                    "changedDate":f["System.ChangedDate"],
+                    "parentId":parent(wi),
+                    "chain":chain,
+                    "featureId":feature_id,
+                    "onBoard":on_board,
+                    "childCount":item_children.len(),
+                    "openChildCount":item_children
+                        .iter()
+                        .filter(|cid| all.get(cid).is_some_and(|c| !is_closed_or_removed(&c["fields"]["System.State"])))
+                        .count(),
+                    "childrenKnown":item_children.iter().all(|cid| all.contains_key(cid)),
+                    "url":self.ado.edit_url(id(wi))
+                })
+            })
+            .collect();
+        let mut features: Vec<Value> = features.into_values().collect();
+        features.sort_by_key(id);
+        {
+            let mut nodes = self.nodes.lock().unwrap();
+            for wi in all.values() {
+                let wid = id(wi);
+                if wid > 0 {
+                    nodes.insert(wid, (self.summary(wi), parent(wi)));
+                }
+            }
+        }
+        Ok(json!({
+            "sprintPath":sprint_path,
+            "items":items,
+            "features":features,
+            "boards":boards,
             "generatedAt":Utc::now().to_rfc3339()
         }))
     }
@@ -799,7 +1067,8 @@ impl PlannerService {
     }
 
     pub async fn request(self: Arc<Self>, method: &str, url: &str, body: Value) -> Result<Value> {
-        let parts: Vec<&str> = url.trim_start_matches('/').split('/').collect();
+        let (path_part, query_part) = url.split_once('?').unwrap_or((url, ""));
+        let parts: Vec<&str> = path_part.trim_start_matches('/').split('/').collect();
         match (method, parts.as_slice()) {
             ("GET", ["progress"]) => Ok(self.progress_snapshot()),
             ("GET", ["auth", "status"]) => {
@@ -863,7 +1132,8 @@ impl PlannerService {
             ("POST", ["auth", "device"]) => self.ado.auth().start_device().await,
             ("GET", ["auth", "device"]) => Ok(self.ado.auth().poll_device().await),
             ("GET", ["overview"]) => self.overview().await,
-            ("GET", ["settings"]) => Ok(self.settings().await),
+            ("GET", ["standup"]) => self.standup(query_part).await,
+            ("GET", ["settings"]) => Ok(self.settings(None).await),
             ("PATCH", ["settings"]) => self.save_settings(&body).await,
             ("GET", ["sprints"]) => self.sprints().await,
             ("PATCH", ["features", work_id, "column"]) => {
@@ -1266,17 +1536,20 @@ mod tests {
         respond(
             &server,
             "GET",
-            "/_apis/Settings/Entries/me/TicketsPlanner",
-            json!({"value":{"prefs":{"theme":"dark"}}}),
+            "/_apis/connectionData",
+            json!({"authenticatedUser":{"id":"u1","providerDisplayName":"Raul","properties":{"Account":{"$value":"raulpo@microsoft.com"}}}}),
         )
         .await;
-        Mock::given(method("PATCH"))
-            .and(path("/_apis/Settings/Entries/me"))
-            .and(body_json(json!({
-                "TicketsPlanner/layout": {"items":{"1":{"col":"Sprint","px":10,"y":20}}},
-                "TicketsPlanner/prefs": {"theme":"dark"}
-            })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        respond(
+            &server,
+            "GET",
+            "/_apis/ExtensionManagement/InstalledExtensions/ms/vss-aex-platform/Data/Scopes/Default/Current/Collections/TicketsPlannerBoards/Documents/raulpo",
+            json!({"id":"raulpo","email":"raulpo@microsoft.com","prefs":{"theme":"dark"}}),
+        )
+        .await;
+        Mock::given(method("PUT"))
+            .and(path("/_apis/ExtensionManagement/InstalledExtensions/ms/vss-aex-platform/Data/Scopes/Default/Current/Collections/TicketsPlannerBoards/Documents"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id":"raulpo","__etag":2})))
             .expect(1)
             .mount(&server)
             .await;

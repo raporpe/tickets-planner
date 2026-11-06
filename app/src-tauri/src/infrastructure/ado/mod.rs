@@ -99,6 +99,17 @@ impl AdoClient {
         format!("{}/{}/_workitems/edit/{id}", self.org, self.project_encoded())
     }
 
+    pub fn extmgmt_boards_url(&self) -> String {
+        let base = if self.org.eq_ignore_ascii_case("https://msasg.visualstudio.com") {
+            "https://extmgmt.dev.azure.com/msasg".to_owned()
+        } else {
+            self.org.clone()
+        };
+        format!(
+            "{base}/_apis/ExtensionManagement/InstalledExtensions/ms/vss-aex-platform/Data/Scopes/Default/Current/Collections/TicketsPlannerBoards/Documents"
+        )
+    }
+
     pub async fn request_json(
         &self,
         method: &str,
@@ -106,7 +117,11 @@ impl AdoClient {
         body: Option<Value>,
         patch: bool,
     ) -> Result<Value> {
-        let url = format!("{}{path}", self.org);
+        let url = if path.starts_with("https://") || path.starts_with("http://") {
+            path.to_owned()
+        } else {
+            format!("{}{path}", self.org)
+        };
         let token = self.auth.token().await?;
         let method = reqwest::Method::from_bytes(method.as_bytes())
             .map_err(|_| Error::new(400, "Invalid HTTP method"))?;
@@ -233,11 +248,10 @@ impl AdoClient {
     pub async fn attachment(&self, input: &str) -> Result<Value> {
         let url = Url::parse(input).map_err(|_| Error::new(400, "Invalid attachment URL"))?;
         let org = Url::parse(&self.org).map_err(|_| Error::new(400, "Invalid organization URL"))?;
+        let path_lower = url.path().to_lowercase();
         if url.origin() != org.origin()
-            || !url
-                .path()
-                .to_lowercase()
-                .contains("/_apis/wit/attachments/")
+            || (!path_lower.contains("/_apis/wit/attachments/")
+                && !path_lower.contains("/_apis/graphprofile/memberavatars/"))
             || !url.username().is_empty()
             || url.password().is_some()
         {
@@ -263,9 +277,13 @@ impl AdoClient {
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("application/octet-stream")
+            .split(';')
+            .next()
+            .unwrap_or("application/octet-stream")
+            .trim()
             .to_owned();
         if !matches!(
-            mime.split(';').next().unwrap_or("").trim(),
+            mime.as_str(),
             "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp" | "image/avif"
         ) {
             return Err(Error::new(415, "Unsupported attachment image type"));
