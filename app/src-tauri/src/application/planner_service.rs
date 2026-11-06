@@ -852,7 +852,14 @@ impl PlannerService {
                     }
                 })
             }
-            ("POST", ["auth", "cli"]) => self.ado.auth().sign_in_cli().await,
+            ("POST", ["auth", "cli"]) => {
+                self.ado.auth().sign_in_cli().await?;
+                let me = self.ado.get("/_apis/connectionData").await?;
+                Ok(json!({
+                    "ok": true,
+                    "user": me["authenticatedUser"]["providerDisplayName"]
+                }))
+            }
             ("POST", ["auth", "device"]) => self.ado.auth().start_device().await,
             ("GET", ["auth", "device"]) => Ok(self.ado.auth().poll_device().await),
             ("GET", ["overview"]) => self.overview().await,

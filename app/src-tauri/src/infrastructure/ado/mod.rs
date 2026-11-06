@@ -132,10 +132,12 @@ impl AdoClient {
         let body = response.text().await?;
         if matches!(status, 203 | 401) {
             self.auth.invalidate().await;
-            return Err(Error::new(
-                401,
-                "Azure DevOps rejected the token. Sign in again.",
-            ));
+            let detail = format!(
+                "Azure DevOps ({}) rejected the token (HTTP {status}) on {path}. Ensure Azure CLI is signed into the Microsoft tenant (`az login --tenant 72f988bf-86f1-41af-91ab-2d7cd011db47`).",
+                self.org
+            );
+            eprintln!("[auth] {detail}");
+            return Err(Error::new(401, detail));
         }
         if !(200..300).contains(&status) {
             let message = serde_json::from_str::<Value>(&body)

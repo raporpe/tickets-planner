@@ -10,6 +10,7 @@ export function SignIn({ status, onSignedIn }) {
   const [error, setError] = useState(null);
   const [device, setDevice] = useState(null);
   const timer = useRef(null);
+  const displayError = error || status?.error;
 
   useEffect(() => () => clearInterval(timer.current), []);
 
@@ -102,10 +103,10 @@ export function SignIn({ status, onSignedIn }) {
           </div>
         )}
 
-        {error && (
+        {displayError && (
           <Alert variant="destructive" className="mt-5">
             <AlertTitle>Sign-in failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="break-words whitespace-pre-wrap">{displayError}</AlertDescription>
           </Alert>
         )}
 

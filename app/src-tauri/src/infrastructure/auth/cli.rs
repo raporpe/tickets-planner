@@ -94,13 +94,20 @@ pub async fn cli_token() -> Result<Token> {
             )
         })?;
     if !output.status.success() {
-        return Err(Error::new(
-            401,
-            format!(
-                "Azure CLI sign-in failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ),
-        ));
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("exit code {:?}", output.status.code())
+        };
+        let msg = format!(
+            "Azure CLI token request failed for tenant {tenant}: {detail}"
+        );
+        eprintln!("[auth] {msg}");
+        return Err(Error::new(401, msg));
     }
     let value: Value = serde_json::from_slice(&output.stdout)?;
     let access = value["accessToken"]
