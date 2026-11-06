@@ -29,9 +29,9 @@ export const typeStyle = (t) => TYPE_STYLE[t] || OTHER_TYPE;
 export const typeTone = (t) => typeStyle(t).text;
 export const typeShort = (t) => ({ 'User Story': 'Story' })[t] || t;
 
-// The parent type a work item is expected to hang under (null for top-level types).
+// The parent type a work item is expected to hang under (null for top-level or standalone types like Bug).
 export const expectedParent = (t) =>
-  ({ Task: 'Story or Feature', Bug: 'Story or Feature', 'User Story': 'Feature', Feature: 'Epic', Epic: 'Strategic Priority' })[t] ?? null;
+  ({ Task: 'Story or Feature', 'User Story': 'Feature', Feature: 'Epic', Epic: 'Strategic Priority' })[t] ?? null;
 
 export const BOARD_COLUMNS = [
   'New',

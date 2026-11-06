@@ -110,16 +110,28 @@ function run(cmd) {
 /**
  * Plain-text editor for fields and comments stored as Markdown in ADO.
  */
-function MarkdownEditor({ initialHtml, placeholder, saving, saveLabel, onSave, onCancel, autoFocus, minHeight }) {
+function MarkdownEditor({ initialHtml, placeholder, saving, saveLabel, onSave, onCancel, onDirtyChange, autoFocus, minHeight }) {
   const ref = useRef(null);
+  const baseline = useRef((initialHtml || '').trim());
+
+  const checkDirty = () => {
+    if (!ref.current) return;
+    const current = ref.current.value.trim();
+    onDirtyChange?.(current !== baseline.current);
+  };
+
   useEffect(() => {
     if (!ref.current) return;
     ref.current.value = initialHtml || '';
+    baseline.current = (initialHtml || '').trim();
+    onDirtyChange?.(false);
     if (autoFocus) {
       ref.current.focus();
       ref.current.setSelectionRange(ref.current.value.length, ref.current.value.length);
     }
-  }, [initialHtml, autoFocus]);
+  }, [initialHtml, autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const save = () => !saving && onSave(ref.current.value.trim(), () => ref.current && (ref.current.value = ''));
 
@@ -131,6 +143,7 @@ function MarkdownEditor({ initialHtml, placeholder, saving, saveLabel, onSave, o
         aria-label={placeholder}
         placeholder={placeholder}
         spellCheck
+        onInput={checkDirty}
         className={cn('block max-h-[50vh] w-full resize-y bg-transparent px-3 py-2 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground', minHeight)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -172,12 +185,27 @@ export function RichEditor({ markdown = false, ...props }) {
   return markdown ? <MarkdownEditor saveLabel="Save" autoFocus minHeight="min-h-28" {...props} /> : <HtmlEditor {...props} />;
 }
 
-function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save', onSave, onCancel, autoFocus = true, minHeight = 'min-h-28' }) {
+function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save', onSave, onCancel, onDirtyChange, autoFocus = true, minHeight = 'min-h-28' }) {
   const ref = useRef(null);
+  const baseline = useRef('');
+  const initiallyBlank = useRef(true);
+
+  const checkDirty = () => {
+    if (!ref.current) return;
+    const raw = ref.current.innerHTML;
+    if (initiallyBlank.current && isBlank(raw, false)) {
+      onDirtyChange?.(false);
+      return;
+    }
+    onDirtyChange?.(toStorage(raw) !== baseline.current);
+  };
 
   useEffect(() => {
     if (!ref.current) return;
     ref.current.innerHTML = toDisplay(initialHtml);
+    initiallyBlank.current = isBlank(initialHtml, false);
+    baseline.current = initiallyBlank.current ? '' : toStorage(ref.current.innerHTML);
+    onDirtyChange?.(false);
     if (autoFocus) {
       ref.current.focus();
       const range = document.createRange();
@@ -187,7 +215,9 @@ function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save',
       window.getSelection()?.addRange(range);
     }
     if (isDesktop) return loadNativeImages(ref.current);
-  }, [initialHtml, autoFocus]);
+  }, [initialHtml, autoFocus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const save = () => !saving && onSave(toStorage(ref.current.innerHTML), () => ref.current && (ref.current.innerHTML = ''));
 
@@ -206,6 +236,7 @@ function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save',
                 onMouseDown={(e) => {
                   e.preventDefault();
                   run(cmd);
+                  checkDirty();
                 }}
               >
                 <Icon className="size-3.5" />
@@ -224,11 +255,13 @@ function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save',
         aria-label={placeholder}
         data-placeholder={placeholder}
         className={cn('rich max-h-[50vh] overflow-y-auto px-3 py-2 outline-none', minHeight)}
+        onInput={checkDirty}
         onPaste={(e) => {
           const html = e.clipboardData.getData('text/html');
           if (!html) return;
           e.preventDefault();
           document.execCommand('insertHTML', false, sanitize(html));
+          checkDirty();
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -240,6 +273,7 @@ function HtmlEditor({ initialHtml = '', placeholder, saving, saveLabel = 'Save',
           } else if (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             run('link');
+            checkDirty();
           }
         }}
       />
