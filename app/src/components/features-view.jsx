@@ -18,13 +18,13 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
       data-item-id={item.id}
       onClick={openOnClick(openItem, item.id)}
       className={cn(
-        'grid cursor-pointer grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)_10rem_7.5rem] items-center gap-3 border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40',
+        'grid cursor-pointer grid-cols-[4.5rem_6.5rem_minmax(0,1fr)_minmax(0,16rem)_10rem_7.5rem] items-center gap-3 border-b px-3 py-1.5 last:border-b-0 hover:bg-accent/40',
         isDone(item) && 'opacity-55',
         pending && 'animate-pulse',
       )}
     >
       <TypeLabel type={item.type} />
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5">
         <ItemLink item={item} />
         <PrioritySelect id={item.id} priority={item.priority} onChange={(priority) => onUpdate(item, { priority })} disabled={pending} compact />
       </div>
