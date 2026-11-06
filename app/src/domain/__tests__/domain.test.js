@@ -12,6 +12,7 @@ import {
   OTHER,
   buildColumns,
   columnKeyOf,
+  computeWorkingSprintTiming,
 } from '../sprint-policy.js';
 import {
   CURRENT_CYCLE_TAG,
@@ -111,6 +112,15 @@ describe('sprint-policy domain', () => {
     assert.equal(cols.length, 5);
     assert.equal(cols[0].kind, 'backlog');
     assert.equal(cols[cols.length - 1].key, OTHER);
+
+    // 2-week sprint (Mon Nov 2, 2026 -> Fri Nov 13, 2026) has 10 working days (excludes Sat Nov 7 & Sun Nov 8)
+    const sprint = { start: '2026-11-02T00:00:00Z', finish: '2026-11-13T00:00:00Z' };
+    const satNoon = Date.parse('2026-11-07T12:00:00Z');
+    const timing = computeWorkingSprintTiming(sprint, satNoon);
+    assert.equal(timing.totalDays, 10);
+    assert.equal(timing.remainingDays, 5);
+    assert.equal(timing.elapsedPct, 50);
+    assert.equal(timing.remainingPct, 50);
   });
 });
 

@@ -230,6 +230,22 @@ export class WorkspaceState {
     this._commitNotes({ ...this._notesRecords, [id]: { deleted: true, at: now } }, true);
   };
 
+  replaceColumnNotes = (col, newNotes = []) => {
+    const now = Date.now();
+    const next = { ...this._notesRecords };
+    for (const [id, v] of Object.entries(next)) {
+      if (v && !v.deleted && v.col === col) {
+        next[id] = { deleted: true, at: now };
+      }
+    }
+    newNotes.forEach((note, idx) => {
+      const id = `n${(now + idx + 1).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const clean = sanitizeNoteEntry({ ...note, col, at: now + idx + 1 }, now + idx + 1);
+      if (clean) next[id] = clean;
+    });
+    this._commitNotes(next, true);
+  };
+
   setTheme = (theme) => {
     const normalized = theme === 'dark' ? 'dark' : 'light';
     this._prefs = { ...this._prefs, theme: normalized };
@@ -388,7 +404,8 @@ export function useBoardNotes() {
   const addNote = useCallback((note) => workspaceState.addNote(note), []);
   const updateNote = useCallback((id, patch) => workspaceState.updateNote(id, patch), []);
   const removeNote = useCallback((id) => workspaceState.removeNote(id), []);
-  return { notes, addNote, updateNote, removeNote };
+  const replaceColumnNotes = useCallback((col, list) => workspaceState.replaceColumnNotes(col, list), []);
+  return { notes, addNote, updateNote, removeNote, replaceColumnNotes };
 }
 
 export function setTheme(theme) {
