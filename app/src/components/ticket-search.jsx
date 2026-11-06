@@ -5,6 +5,7 @@ import { StatePill, TypeLabel } from '@/components/work-item';
 import { Keys } from '@/components/shortcuts-help';
 import { useDetail } from '@/lib/detail';
 import { NAV_ACTIONS, TICKET_ACTIONS, VIEW_ACTIONS } from '@/lib/shortcuts';
+import pkg from '../../package.json';
 
 const LIMIT = 40;
 
@@ -36,7 +37,7 @@ function search(all, q) {
 }
 
 /** Ctrl/Cmd+K: find a ticket by title, id or ADO link, or run an action on the current ticket. */
-export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts, onView, showClosed }) {
+export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts, onShowVersion, onView, showClosed }) {
   const { openItem } = useDetail();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -88,6 +89,7 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
   // View toggles are listed even before typing, so "show closed" is one Ctrl+K away.
   const views = id ? [] : VIEW_ACTIONS.filter((a) => !words.length || match(viewLabel(a)));
   const showHelp = words && match('Keyboard shortcuts help');
+  const showVersion = !id && (!words.length || match(`Show version about update v${pkg.version}`));
 
   return (
     <>
@@ -160,14 +162,24 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
               ))}
             </CommandGroup>
           )}
-          {showHelp && (
+          {(showHelp || showVersion) && (
             <CommandGroup heading="Help">
-              <CommandItem value="help-shortcuts" onSelect={() => later(onShowShortcuts)}>
-                Keyboard shortcuts
-                <span data-slot="command-shortcut" className="ml-auto">
-                  <Keys keys={['?']} />
-                </span>
-              </CommandItem>
+              {showHelp && (
+                <CommandItem value="help-shortcuts" onSelect={() => later(onShowShortcuts)}>
+                  Keyboard shortcuts
+                  <span data-slot="command-shortcut" className="ml-auto">
+                    <Keys keys={['?']} />
+                  </span>
+                </CommandItem>
+              )}
+              {showVersion && (
+                <CommandItem value="help-version" onSelect={() => later(onShowVersion)}>
+                  Show version
+                  <span data-slot="command-shortcut" className="ml-auto font-mono text-xs text-muted-foreground tabular-nums">
+                    v{pkg.version}
+                  </span>
+                </CommandItem>
+              )}
             </CommandGroup>
           )}
         </CommandList>

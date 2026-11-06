@@ -18,7 +18,7 @@
 
 ## Conventions
 
-- **Board methodology**: see `instructions.md` → Board Methodology. Feature (Features kanban) = big ongoing initiative; Task/Bug (weekly Taskboard) = real work; every Task rolls up to a board Feature.
+- **Board methodology**: see `instructions.md` → Board Methodology. Feature (Features kanban) = big ongoing initiative; Task/Bug (weekly Taskboard) = real work; every Task and Story rolls up to a board Feature (Bugs do not require a parent or Feature).
 - **Iterations**: new work → `SAN SA\Sprint`; work done this sprint → current sprint (`SAN SA\Sprint\YYYY.NN`). Resolve the current sprint live: `GET .../4271a5b2-919a-44ce-a87d-ef4c4d823a21/_apis/work/teamsettings/iterations?$timeframe=current&api-version=7.1`. Never hardcode it.
 - **Required tags**:
   1. Current cycle (`FY26 C5` now; Microsoft FY starts in July, cycles are quarterly) + platform (`iOS` / `Android` / `Backend` / `MiniApps` …) + topic tags.

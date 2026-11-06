@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ChevronRight, Circle, CircleCheckBig, CircleDashed, CodeXml, ExternalLink, FlaskConical, Lightbulb, ListChecks, PackageCheck, PenTool, Plane } from 'lucide-react';
+import { ChevronRight, Circle, CircleCheckBig, CircleDashed, CodeXml, ExternalLink, FlaskConical, Lightbulb, ListChecks, PackageCheck, PenTool, Plane, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { FeaturePicker, ItemLink, PrioritySelect, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
-import { columnRank, isDone, isInSprint } from '@/lib/planning';
+import { FeaturePicker, ItemLink, PrioritySelect, ReasonBadges, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
+import { columnRank, featureComplianceExplanation, isDone, isInSprint, requiresFeature } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 import { HierarchyHover } from '@/components/hierarchy';
 
@@ -37,11 +38,11 @@ export function ItemRow({ item, data, features, pending, onUpdate, extra }) {
           {item.title}
         </button>
         {(via.length > 0 || extra) && (
-          <p className="truncate text-[11px] text-muted-foreground">
-            {via.length > 0 && <>via {via.map((c) => `${c.type} ${c.id}`).join(' › ')}</>}
-            {via.length > 0 && extra && ' · '}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground">
+            {via.length > 0 && <span className="truncate">via {via.map((c) => `${c.type} ${c.id}`).join(' › ')}</span>}
+            {via.length > 0 && extra && <span aria-hidden>·</span>}
             {extra}
-          </p>
+          </div>
         )}
       </div>
       <FeaturePicker item={item} features={features} onPick={(parentId) => onUpdate(item, { parentId })} disabled={pending} />
@@ -110,7 +111,7 @@ function ColumnSelect({ feature, columns, onMove, disabled }) {
   );
 }
 
-function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, onMoveFeature }) {
+function FeatureGroup({ feature, items, data, features, pendingIds, reasonsById, onUpdate, onMoveFeature }) {
   const [open, setOpen] = useState(true);
   const openCount = items.filter((i) => !isDone(i)).length;
   return (
@@ -125,26 +126,54 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
           <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} />
           <h3 className="truncate text-sm font-semibold">{feature ? feature.title : 'No parent Feature'}</h3>
         </button>
+        {!feature && items.some((i) => !isDone(i) && requiresFeature(i.type)) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge variant="outline" className="h-5 cursor-help gap-1 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
+                <TriangleAlert className="size-3 shrink-0" />
+                Unparented
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs leading-relaxed">
+              {featureComplianceExplanation(null, null)}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {feature && (
           <>
             {feature.onBoard ? (
               <ColumnSelect feature={feature} columns={data.featureColumns} onMove={onMoveFeature} disabled={pendingIds.has(feature.id)} />
             ) : (
-              <Badge variant="outline" className="h-5 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
-                Off board ·{' '}
-                {feature.iterationPath?.startsWith(data.backlogPath) && feature.areaPath
-                  ? feature.areaPath
-                  : feature.iterationPath?.replace(/^SAN SA\\/, '') || feature.areaPath || 'outside SAN SA'}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="h-5 cursor-help gap-1 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200">
+                    <TriangleAlert className="size-3 shrink-0" />
+                    Off board ·{' '}
+                    {feature.iterationPath?.startsWith(data.backlogPath) && feature.areaPath
+                      ? feature.areaPath
+                      : feature.iterationPath?.replace(/^SAN SA\\/, '') || feature.areaPath || 'outside SAN SA'}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs leading-relaxed">
+                  {featureComplianceExplanation({ featureId: feature.id }, feature)}
+                </TooltipContent>
+              </Tooltip>
             )}
             {feature.onBoard && isInSprint(feature.iterationPath, data) && (
-              <Badge
-                variant="outline"
-                className="h-5 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200"
-                title={`Features stay in ${data.backlogPath}; only Tasks and Bugs go into sprints.`}
-              >
-                In sprint {feature.iterationPath.split('\\').pop()}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="h-5 cursor-help gap-1 border-amber-200 bg-amber-50 text-[11px] text-amber-800 dark:border-amber-300/25 dark:bg-amber-300/10 dark:text-amber-200"
+                  >
+                    <TriangleAlert className="size-3 shrink-0" />
+                    In sprint {feature.iterationPath.split('\\').pop()}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs leading-relaxed">
+                  Feature #{feature.id} is scheduled inside sprint &ldquo;{feature.iterationPath}&rdquo; instead of {data.backlogPath || 'SAN SA\\Sprint'}. Features must stay in {data.backlogPath || 'SAN SA\\Sprint'} so they remain visible on aka.ms/sa-kanban; only Tasks and Bugs go into sprints.
+                </TooltipContent>
+              </Tooltip>
             )}
             {feature.lane && <span className="hidden text-[11px] text-muted-foreground lg:inline">{feature.lane}</span>}
             {feature.state && !feature.column?.includes(feature.state) && <StatePill state={feature.state} />}
@@ -166,9 +195,20 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
       </header>
       {open &&
         (items.length ? (
-          items.map((item) => (
-            <ItemRow key={item.id} item={item} data={data} features={features} pending={pendingIds.has(item.id)} onUpdate={onUpdate} />
-          ))
+          items.map((item) => {
+            const rowReasons = (reasonsById?.get(item.id) || []).filter((r) => !['no-feature', 'off-board', 'carried'].includes(r.key));
+            return (
+              <ItemRow
+                key={item.id}
+                item={item}
+                data={data}
+                features={features}
+                pending={pendingIds.has(item.id)}
+                onUpdate={onUpdate}
+                extra={rowReasons.length > 0 ? <ReasonBadges reasons={rowReasons} /> : null}
+              />
+            );
+          })
         ) : (
           <p className="px-3 py-2 text-xs text-muted-foreground">You own nothing under this Feature.</p>
         ))}
@@ -176,7 +216,7 @@ function FeatureGroup({ feature, items, data, features, pendingIds, onUpdate, on
   );
 }
 
-export function FeaturesView({ data, items, features, pendingIds, onUpdate, onMoveFeature }) {
+export function FeaturesView({ data, items, features, pendingIds, reasonsById, onUpdate, onMoveFeature }) {
   const [showEmpty, setShowEmpty] = useState(false);
   const groups = new Map();
   items.forEach((i) => groups.set(i.featureId, [...(groups.get(i.featureId) || []), i]));
@@ -206,6 +246,7 @@ export function FeaturesView({ data, items, features, pendingIds, onUpdate, onMo
           data={data}
           features={features}
           pendingIds={pendingIds}
+          reasonsById={reasonsById}
           onUpdate={onUpdate}
           onMoveFeature={onMoveFeature}
         />

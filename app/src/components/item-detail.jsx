@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, Unlink, X, Zap } from 'lucide-react';
+import { ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, TriangleAlert, Unlink, X, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FeaturePicker, PrioritySelect, SprintSelect, StatePill, StateSelect, TypeLabel } from '@/components/work-item';
 import { RichEditor, RichView } from '@/components/rich-text';
 import { HierarchyTree, MissingParent } from '@/components/hierarchy';
 import { api } from '@/api';
 import { useDetail } from '@/lib/detail';
-import { CURRENT_CYCLE_TAG, hasCycleTag, hasPlatformTag, isSprintUnplanned, isSprintUnplannedTag, PLATFORM_TAGS, SPRINT_UNPLANNED_TAG } from '@/lib/planning';
+import { CURRENT_CYCLE_TAG, hasCycleTag, hasPlatformTag, isSprintUnplanned, isSprintUnplannedTag, missingTagsExplanation, PLATFORM_TAGS, SPRINT_UNPLANNED_TAG } from '@/lib/planning';
 import { isTyping, overlayOpen, runAction, takeQueued, TICKET_ACTIONS, useAction } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +20,19 @@ const FIELD_LABELS = {
   'Microsoft.VSTS.TCM.ReproSteps': 'Repro steps',
   'Microsoft.VSTS.Common.AcceptanceCriteria': 'Acceptance criteria',
 };
+
+function describeActiveEdits(editorSet) {
+  const names = [...editorSet].map((key) => {
+    if (FIELD_LABELS[key]) return FIELD_LABELS[key].toLowerCase();
+    if (key === 'title') return 'title';
+    if (key === 'pr-link') return 'PR link';
+    if (key === 'new-comment' || key.startsWith('comment-')) return 'comment';
+    return 'field';
+  });
+  const unique = [...new Set(names)];
+  if (unique.length === 1) return `Save or cancel your ${unique[0]} edit before closing.`;
+  return 'Save or cancel your open edits before closing.';
+}
 
 const detailCache = new Map();
 const inflightDetails = new Map();
@@ -352,10 +366,18 @@ function TagsEditor({ detail, disabled, onSaveTags }) {
       <div className="flex items-center justify-between gap-2">
         <dt className="text-xs text-muted-foreground">Tags</dt>
         {(missingCycle || missingPlatform) && (
-          <span className="text-[11px] font-medium text-amber-800 dark:text-amber-200">
-            Missing:{' '}
-            {[missingCycle && CURRENT_CYCLE_TAG, missingPlatform && 'platform tag'].filter(Boolean).join(' + ')}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex cursor-help items-center gap-1 text-[11px] font-medium text-amber-800 dark:text-amber-200">
+                <TriangleAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-300" />
+                Missing:{' '}
+                {[missingCycle && CURRENT_CYCLE_TAG, missingPlatform && 'platform tag'].filter(Boolean).join(' + ')}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs leading-relaxed">
+              {missingTagsExplanation(missingCycle, missingPlatform)}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
       <dd className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -451,7 +473,8 @@ function TitleEditor({ title, onSave, onEditingChange }) {
   const [value, setValue] = useState(title);
   const [saving, setSaving] = useState(false);
   useEffect(() => setValue(title), [title]);
-  useEffect(() => onEditingChange(editing), [editing, onEditingChange]);
+  const dirty = editing && value.replace(/\s+/g, ' ').trim() !== (title || '').replace(/\s+/g, ' ').trim();
+  useEffect(() => onEditingChange(dirty), [dirty, onEditingChange]);
 
   async function save() {
     const v = value.replace(/\s+/g, ' ').trim();
@@ -508,7 +531,9 @@ function TitleEditor({ title, onSave, onEditingChange }) {
 function FieldSection({ refName, html, markdown, onSave, onEditingChange }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => onEditingChange(editing), [editing, onEditingChange]);
+  useEffect(() => {
+    if (!editing) onEditingChange(false);
+  }, [editing, onEditingChange]);
 
   return (
     <section>
@@ -529,6 +554,7 @@ function FieldSection({ refName, html, markdown, onSave, onEditingChange }) {
           initialHtml={html || ''}
           placeholder={`Write the ${FIELD_LABELS[refName].toLowerCase()}…`}
           saving={saving}
+          onDirtyChange={onEditingChange}
           onCancel={() => setEditing(false)}
           onSave={async (value) => {
             setSaving(true);
@@ -550,7 +576,9 @@ function FieldSection({ refName, html, markdown, onSave, onEditingChange }) {
 function Comment({ comment, mine, onSave, onEditingChange }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => onEditingChange(editing), [editing, onEditingChange]);
+  useEffect(() => {
+    if (!editing) onEditingChange(false);
+  }, [editing, onEditingChange]);
   const edited = comment.modifiedDate && comment.version > 1;
   const initials = (comment.createdBy?.name || '?')
     .split(/\s+/)
@@ -593,6 +621,7 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
               initialHtml={comment.text}
               placeholder="Edit comment…"
               saving={saving}
+              onDirtyChange={onEditingChange}
               onCancel={() => setEditing(false)}
               onSave={async (text) => {
                 setSaving(true);
@@ -618,13 +647,16 @@ function NewComment({ id, onAdd, onEditingChange }) {
     setActive(true);
     requestAnimationFrame(() => scope.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   });
-  useEffect(() => onEditingChange(active), [active, onEditingChange]);
+  useEffect(() => {
+    if (!active) onEditingChange(false);
+  }, [active, onEditingChange]);
 
   return <div ref={scope}>{active ? (
     <RichEditor
       placeholder="Add a comment…"
       saveLabel="Comment"
       saving={saving}
+      onDirtyChange={onEditingChange}
       onCancel={() => setActive(false)}
       onSave={async (text) => {
         if (!text || !text.replace(/<[^>]+>|&nbsp;|\s/g, '')) return;
@@ -670,7 +702,8 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
   const [loading, setLoading] = useState(false);
   const editors = useRef(new Set());
   const [, force] = useState(0);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(0);
+  const pendingLeave = useRef(null);
   const item = data?.items.find((i) => i.id === id);
   const who = (p) => (p?.id && p.id === data?.me?.id ? 'you' : p?.name);
 
@@ -703,7 +736,8 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
 
   useEffect(() => {
     setDetailState(seedDetail(id, data, features));
-    setConfirming(false);
+    setConfirming(0);
+    pendingLeave.current = null;
     editors.current = new Set();
     load();
     if (id && data?.items) {
@@ -757,6 +791,10 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
       if (on && !had) editors.current.add(key);
       else if (!on && had) editors.current.delete(key);
       else return;
+      if (editors.current.size === 0) {
+        setConfirming(0);
+        pendingLeave.current = null;
+      }
       force((n) => n + 1);
     },
     [],
@@ -785,9 +823,32 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     return () => clearTimeout(t);
   }, [loadedId, id]);
 
+  const requestLeave = useCallback(
+    (action = onClose) => {
+      if (editors.current.size) {
+        pendingLeave.current = action;
+        setConfirming((n) => n + 1);
+        return;
+      }
+      action();
+    },
+    [onClose],
+  );
+
   function requestClose() {
-    if (editors.current.size) return setConfirming(true);
-    onClose();
+    requestLeave(onClose);
+  }
+
+  function keepEditing() {
+    setConfirming(0);
+    pendingLeave.current = null;
+    requestAnimationFrame(() => {
+      const activeEditor = body.current?.querySelector('[contenteditable="true"], input[aria-label="Title"], input[aria-label^="Link a pull request"]');
+      if (activeEditor instanceof HTMLElement) {
+        activeEditor.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        activeEditor.focus({ preventScroll: true });
+      }
+    });
   }
 
   // J / K step to the next / previous card on the page; other keys go through the shared shortcuts in App.
@@ -798,17 +859,16 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
       const k = e.key.toLowerCase();
       if (k === 'j' || k === 'k') {
         e.preventDefault();
-        if (editors.current.size) return setConfirming(true);
         const known = new Set(data?.items.map((i) => i.id));
         const ids = [...new Set([...document.querySelectorAll('[data-item-id]')].map((el) => Number(el.dataset.itemId)))].filter((n) => known.has(n));
         const at = ids.indexOf(id);
         const next = at === -1 ? ids[0] : ids[at + (k === 'j' ? 1 : -1)];
-        if (next) openItem(next);
+        if (next) requestLeave(() => openItem(next));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [id, data, openItem]);
+  }, [id, data, openItem, requestLeave]);
 
   /**
    * Saves with optimistic concurrency. ADO bumps the revision on unrelated changes (e.g. comments),
@@ -958,6 +1018,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
     <Sheet open={!!id} onOpenChange={(o) => !o && requestClose()}>
       <SheetContent
         ref={body}
+        showCloseButton={!detail}
         className="gap-0 sm:max-w-2xl"
         onEscapeKeyDown={(e) => {
           if (!editors.current.size) return;
@@ -965,7 +1026,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
           // Escape inside an editor cancels that edit; only ask when it comes from elsewhere.
           const t = e.target;
           if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) return;
-          setConfirming(true);
+          requestClose();
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -987,7 +1048,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
         ) : (
           <>
             <header className="flex flex-col gap-2 border-b px-5 pt-3 pb-3">
-              <div className="flex h-7 items-center gap-2 pr-8">
+              <div className="flex h-7 items-center gap-2">
                 <TypeLabel type={detail.type} />
                 <a
                   href={detail.url}
@@ -1009,16 +1070,27 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                     <Loader2 className="size-3 animate-spin" /> Saving…
                   </span>
                 )}
-                <button
-                  type="button"
-                  className="ml-auto rounded-sm p-1 text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40"
-                  onClick={() => load({ force: true })}
-                  disabled={loading}
-                  aria-label="Reload from Azure DevOps"
-                  title="Reload from Azure DevOps"
-                >
-                  <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
-                </button>
+                <div className="ml-auto -mr-1.5 flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-40"
+                    onClick={() => load({ force: true })}
+                    disabled={loading}
+                    aria-label="Reload from Azure DevOps"
+                    title="Reload from Azure DevOps"
+                  >
+                    <RefreshCw className={cn('size-4', loading && 'animate-spin')} />
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    onClick={requestClose}
+                    aria-label="Close"
+                    title="Close (Esc)"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
               </div>
               <TitleEditor title={detail.title} onSave={saveTitle} onEditingChange={tracker('title')} />
               <SheetDescription className="sr-only">
@@ -1055,17 +1127,59 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
               </div>
             </header>
 
-            {confirming && (
-              <div role="alertdialog" aria-label="Unsaved edits" className="flex items-center gap-2 border-b bg-amber-50 px-5 py-2 text-[13px] text-amber-900 dark:bg-amber-300/10 dark:text-amber-100">
-                <span className="mr-auto">You have unsaved edits.</span>
-                <Button size="xs" variant="ghost" autoFocus onClick={() => setConfirming(false)}>
-                  Keep editing
-                </Button>
-                <Button size="xs" variant="destructive" onClick={onClose}>
-                  Discard
-                </Button>
+            <div
+              className={cn(
+                'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
+                confirming > 0 ? 'grid-rows-[1fr] opacity-100' : 'pointer-events-none grid-rows-[0fr] opacity-0',
+              )}
+            >
+              <div className="overflow-hidden">
+                {confirming > 0 && (
+                  <div
+                    key={confirming}
+                    role="alertdialog"
+                    aria-label="Unsaved edits"
+                    className="animate-unsaved-alert mx-5 mt-3 mb-1 flex items-center gap-3 rounded-lg border border-amber-500/80 bg-amber-100/95 px-3.5 py-2.5 text-amber-950 shadow-md ring-2 ring-amber-400/35 dark:border-amber-400/60 dark:bg-amber-500/20 dark:text-amber-50 dark:ring-amber-400/25"
+                  >
+                    <span
+                      aria-hidden
+                      className="grid size-8 shrink-0 place-items-center rounded-full bg-amber-500 text-white shadow-xs dark:bg-amber-400 dark:text-amber-950"
+                    >
+                      <TriangleAlert className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold leading-tight">You have unsaved edits</p>
+                      <p className="mt-0.5 truncate text-xs text-amber-900/85 dark:text-amber-100/85">
+                        {describeActiveEdits(editors.current)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        autoFocus
+                        className="border-amber-500/60 bg-background/95 text-foreground shadow-none hover:bg-background dark:border-amber-400/40 dark:bg-background/80 dark:hover:bg-background"
+                        onClick={keepEditing}
+                      >
+                        Keep editing
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="destructive"
+                        onClick={() => {
+                          const leave = pendingLeave.current || onClose;
+                          setConfirming(0);
+                          pendingLeave.current = null;
+                          leave();
+                        }}
+                      >
+                        Discard
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="flex flex-col gap-6 px-5 py-4">
@@ -1075,7 +1189,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                   features={features}
                   onPick={(parentId) => onUpdate(item, { parentId })}
                   disabled={pending}
-                  onOpen={(next) => (editors.current.size ? setConfirming(true) : openItem(next))}
+                  onOpen={(next) => requestLeave(() => openItem(next))}
                 />
                 <section aria-label="Details">
                   <SectionHeader>Details</SectionHeader>

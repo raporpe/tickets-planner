@@ -54,7 +54,7 @@ Rules:
 4. **Tags on every new Story/Task.**
    - **Cycle & Platform (Mandatory)**: Tag with the current cycle (**`FY26 C5`** now; Microsoft fiscal year starts in July and cycles run by quarters) **and** the relevant **platform tag** (`iOS`, `Android`, `Backend`, `MiniApps`, …), plus topic tags. Keep the weekly tag (Monday date, `YYYYMMDD`) on Tasks worked that week as Raul's personal filter.
    - **Unplanned sprint work (`Sprint-Unplanned`)**: Add the **`Sprint-Unplanned`** tag to any ticket brought into an active sprint that *was not part of the original sprint plan* (bugs, priority changes, or extra work arising mid-sprint). In the planner app, this tag is controlled via the `Sprint-Unplanned` checkbox in the ticket detail panel and illuminates the card on the sprint board.
-5. **No orphans.** Any open Task/Story/Bug whose parent chain does not reach a board Feature must be re-parented under the right Feature (or a new Feature proposed to the user).
+5. **No orphans (for Tasks and Stories).** Any open Task or User Story whose parent chain does not reach a board Feature must be re-parented under the right Feature (or a new Feature proposed to the user). **Bugs do not require a parent or Feature**, since standalone bugs may be unrelated to any active Feature initiative.
 6. **Keep Features honest.** When creating/activating Tasks, check the parent Feature's column; flag Features that are in New with active Tasks, or in progress with no open children.
 7. **Default task owner.** Always assign Tasks created at Raul's request to `raulpo@microsoft.com`, unless he explicitly specifies a different owner. Do not leave them unassigned for team planning. Verify the saved assignment after creation.
 

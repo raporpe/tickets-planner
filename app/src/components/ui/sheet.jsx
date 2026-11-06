@@ -24,7 +24,7 @@ function SheetOverlay({ className, ...props }) {
   )
 }
 
-function SheetContent({ className, children, side = "right", ...props }) {
+function SheetContent({ className, children, side = "right", showCloseButton = true, ...props }) {
   return (
     <SheetPrimitive.Portal>
       <SheetOverlay />
@@ -41,10 +41,12 @@ function SheetContent({ className, children, side = "right", ...props }) {
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="absolute top-3 right-3 rounded-sm p-1 text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-          <XIcon className="size-4" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
+        {showCloseButton && (
+          <SheetPrimitive.Close className="absolute top-3.5 right-3.5 inline-flex size-7 items-center justify-center rounded-sm text-muted-foreground opacity-80 transition-opacity hover:bg-accent hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+            <XIcon className="size-4" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        )}
       </SheetPrimitive.Content>
     </SheetPrimitive.Portal>
   )

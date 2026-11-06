@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ExternalLink, Loader2, TriangleAlert } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { StatePill, TypeLabel } from '@/components/work-item';
 import { api } from '@/api';
 import { cn } from '@/lib/utils';
@@ -10,11 +11,19 @@ import { DONE_STATES, expectedParent, typeShort, typeStyle } from '@/lib/plannin
 export function MissingParent({ type, className }) {
   const want = expectedParent(type);
   if (!want) return null;
+  const kind = typeShort(type).toLowerCase();
   return (
-    <p className={cn('flex items-center gap-1.5 text-[12px] text-amber-800 dark:text-amber-200', className)}>
-      <TriangleAlert className="size-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
-      This {typeShort(type).toLowerCase()} isn't linked to a parent {want}.
-    </p>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <p className={cn('inline-flex w-fit cursor-help items-center gap-1.5 text-[12px] text-amber-800 dark:text-amber-200', className)}>
+          <TriangleAlert className="size-3.5 shrink-0 text-amber-600 dark:text-amber-300" />
+          This {kind} isn&apos;t linked to a parent {want}.
+        </p>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs leading-relaxed">
+        Without a parent {want} that rolls up to a Feature on aka.ms/sa-kanban (SAN SA · SAN SA\Sprint), this {kind} has no visibility on the team board.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

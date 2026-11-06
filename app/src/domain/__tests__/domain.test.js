@@ -155,6 +155,9 @@ describe('hygiene-rules domain', () => {
     assert.ok(keys.includes('carried'));
     assert.ok(keys.includes('story-done'));
     assert.equal(needsAction(reasons), true);
+    for (const r of reasons) {
+      assert.ok(typeof r.explanation === 'string' && r.explanation.length > 20);
+    }
 
     const idleTask = {
       id: 11,
@@ -172,6 +175,19 @@ describe('hygiene-rules domain', () => {
       taskReasons.map((r) => r.key),
       ['idle'],
     );
+
+    const standaloneBug = {
+      id: 12,
+      type: 'Bug',
+      state: 'New',
+      iterationPath: 'SAN SA\\Sprint\\2026.02',
+      featureId: null,
+      onBoard: false,
+      tags: ['FY26 C5', 'Android'],
+      weeksCarried: 0,
+      changedDate: new Date().toISOString(),
+    };
+    assert.deepEqual(attentionReasons(standaloneBug, MOCK_OVERVIEW, featureById), []);
   });
 
   it('finds features misplaced inside a sprint and filters items', () => {
@@ -195,6 +211,7 @@ describe('theme-tones domain', () => {
     assert.equal(typeShort('User Story'), 'Story');
     assert.equal(typeShort('Task'), 'Task');
     assert.equal(expectedParent('Task'), 'Story or Feature');
+    assert.equal(expectedParent('Bug'), null);
     assert.equal(expectedParent('User Story'), 'Feature');
     assert.equal(expectedParent('Feature'), 'Epic');
     assert.ok(stateTone('Active').includes('sky'));

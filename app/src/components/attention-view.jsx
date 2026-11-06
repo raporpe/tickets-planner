@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronRight } from 'lucide-react';
+import { Check, ChevronRight, TriangleAlert } from 'lucide-react';
 import 'piixpal';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { ItemRow } from '@/components/features-view';
-import { ItemLink, TypeLabel } from '@/components/work-item';
+import { ItemLink, ReasonBadges, TypeLabel } from '@/components/work-item';
 import { CURRENT_CYCLE_TAG, featuresInSprint, isDone, PLATFORM_TAGS } from '@/lib/planning';
 
 const GROUPS = [
@@ -19,7 +20,7 @@ const GROUPS = [
 const HYGIENE_CHECKS = [
   {
     title: 'Parented under a board Feature',
-    detail: 'Every open Task, Bug, and Story rolls up to a Feature on aka.ms/sa-kanban (SAN SA · SAN SA\\Sprint).',
+    detail: 'Every open Task and Story rolls up to a Feature on aka.ms/sa-kanban (standalone Bugs are allowed).',
   },
   {
     title: `Tagged with ${CURRENT_CYCLE_TAG} & platform`,
@@ -149,12 +150,10 @@ function CollapsibleInfoSection({ section, data, features, pendingIds, reasonsBy
                   pending={pendingIds.has(item.id)}
                   onUpdate={onUpdate}
                   extra={
-                    <span className="text-muted-foreground">
-                      {(reasonsById.get(item.id) || [])
-                        .filter((r) => section.keys.includes(r.key))
-                        .map((r) => r.label)
-                        .join(', ')}
-                    </span>
+                    <ReasonBadges
+                      reasons={(reasonsById.get(item.id) || []).filter((r) => section.keys.includes(r.key))}
+                      info
+                    />
                   }
                 />
               ))}
@@ -190,11 +189,21 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
           </div>
           <div className="overflow-hidden rounded-lg border bg-card">
             {sprintFeatures.map((f) => (
-              <div key={f.id} data-item-id={f.id} className="grid grid-cols-[4.5rem_5rem_minmax(0,1fr)_minmax(0,16rem)] items-center gap-3 border-b px-3 py-1.5 last:border-b-0">
+              <div key={f.id} data-item-id={f.id} className="grid grid-cols-[4.5rem_6.5rem_minmax(0,1fr)_minmax(0,16rem)] items-center gap-3 border-b px-3 py-1.5 last:border-b-0">
                 <TypeLabel type="Feature" />
                 <ItemLink item={f} />
                 <span className="truncate text-[13px]">{f.title}</span>
-                <span className="truncate text-xs text-amber-800 dark:text-amber-200">{f.iterationPath}</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help items-center gap-1 truncate text-xs font-medium text-amber-800 dark:text-amber-200">
+                      <TriangleAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-300" />
+                      <span className="truncate">{f.iterationPath}</span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs leading-relaxed">
+                    Feature #{f.id} is scheduled inside sprint &ldquo;{f.iterationPath}&rdquo; instead of {data.backlogPath || 'SAN SA\\Sprint'}. Features placed inside a sprint drop off the team Feature board (aka.ms/sa-kanban) and break sprint hierarchy rules.
+                  </TooltipContent>
+                </Tooltip>
               </div>
             ))}
           </div>
@@ -217,9 +226,7 @@ export function AttentionView({ data, items, features, pendingIds, reasonsById, 
                 pending={pendingIds.has(item.id)}
                 onUpdate={onUpdate}
                 extra={
-                  <span className="text-amber-800 dark:text-amber-200">
-                    {(reasonsById.get(item.id) || []).filter((r) => s.keys.includes(r.key)).map((r) => r.label).join(', ')}
-                  </span>
+                  <ReasonBadges reasons={(reasonsById.get(item.id) || []).filter((r) => s.keys.includes(r.key))} />
                 }
               />
             ))}

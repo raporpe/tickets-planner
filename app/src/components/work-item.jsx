@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { canBeInSprint, columnRank, isDone, isSprintUnplanned, PRIORITIES, priorityTone, stateTone, typeShort, typeStyle } from '@/lib/planning';
+import { canBeInSprint, columnRank, featureComplianceExplanation, isDone, isSprintUnplanned, PRIORITIES, priorityTone, requiresFeature, stateTone, typeShort, typeStyle } from '@/lib/planning';
 import { openOnClick, useDetail } from '@/lib/detail';
 import { useShortcutOpen } from '@/lib/shortcuts';
 
@@ -215,27 +215,40 @@ export function FeaturePicker({ item, features, onPick, disabled, compact, label
   const { open, onOpenChange: setOpen, ref } = useShortcutOpen('feature', item.id);
   const { byId, byColumn } = getGroupedBoardFeatures(features);
   const current = byId.get(item.featureId);
+  const hasIssue = requiresFeature(item.type) && (!current || !item.onBoard);
+  const warningText = hasIssue ? featureComplianceExplanation(item, current) : null;
+
+  const triggerButton = (
+    <PopoverTrigger asChild disabled={disabled}>
+      <button
+        ref={ref}
+        title={hasIssue ? undefined : 'Change Feature (F)'}
+        type="button"
+        aria-label={`Parent feature of ${item.id}`}
+        className={cn(
+          'group/fp inline-flex min-w-0 max-w-full items-center gap-1 rounded px-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+          hasIssue ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
+          compact ? 'h-5' : 'h-7 px-2',
+          className,
+        )}
+      >
+        {hasIssue ? <TriangleAlert className="size-3 shrink-0" /> : null}
+        <span className="truncate">{current ? (item.onBoard && label) || current.title : hasIssue ? 'No board Feature' : 'No Feature'}</span>
+        <ChevronsUpDown className={cn('size-3 shrink-0', compact ? 'opacity-0 group-hover/fp:opacity-60' : 'opacity-50')} />
+      </button>
+    </PopoverTrigger>
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild disabled={disabled}>
-        <button
-          ref={ref}
-          title="Change Feature (F)"
-          type="button"
-          aria-label={`Parent feature of ${item.id}`}
-          className={cn(
-            'group/fp inline-flex min-w-0 max-w-full items-center gap-1 rounded px-1 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-            !current || !item.onBoard ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
-            compact ? 'h-5' : 'h-7 px-2',
-            className,
-          )}
-        >
-          {!current || !item.onBoard ? <TriangleAlert className="size-3 shrink-0" /> : null}
-          <span className="truncate">{current ? (item.onBoard && label) || current.title : 'No board Feature'}</span>
-          <ChevronsUpDown className={cn('size-3 shrink-0', compact ? 'opacity-0 group-hover/fp:opacity-60' : 'opacity-50')} />
-        </button>
-      </PopoverTrigger>
+      {warningText && !open ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
+          <TooltipContent className="max-w-xs leading-relaxed">{warningText}</TooltipContent>
+        </Tooltip>
+      ) : (
+        triggerButton
+      )}
       {open && (
         <PopoverContent className="w-[30rem] p-0" align="start">
           <Command>
@@ -289,6 +302,33 @@ export function TypeLabel({ type }) {
     <span className={cn('inline-flex items-center gap-1.5 text-[12px] font-semibold', s.text)}>
       <span aria-hidden className={cn('size-2 rounded-full', s.dot)} />
       {typeShort(type)}
+    </span>
+  );
+}
+
+export function ReasonBadges({ reasons, info = false }) {
+  if (!reasons?.length) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      {reasons.map((r) => (
+        <Tooltip key={r.key}>
+          <TooltipTrigger asChild>
+            <span
+              onClick={(e) => e.stopPropagation()}
+              className={cn(
+                'inline-flex cursor-help items-center gap-1 rounded px-1 py-px text-[11px] font-medium transition-colors',
+                info
+                  ? 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+                  : 'text-amber-800 hover:bg-amber-100/70 dark:text-amber-200 dark:hover:bg-amber-300/15',
+              )}
+            >
+              {!info && <TriangleAlert className="size-3 shrink-0 text-amber-600 dark:text-amber-300" />}
+              <span>{r.label}</span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs leading-relaxed">{r.explanation || r.label}</TooltipContent>
+        </Tooltip>
+      ))}
     </span>
   );
 }
@@ -352,9 +392,18 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
           {reasons
             .filter((r) => !['no-feature', 'off-board', 'carried'].includes(r.key))
             .map((r) => (
-              <span key={r.key} className="rounded-full bg-amber-50 px-2 text-[10px] text-amber-800 ring-1 ring-amber-200 dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25 ring-inset">
-                {r.label}
-              </span>
+              <Tooltip key={r.key}>
+                <TooltipTrigger asChild>
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex cursor-help items-center gap-1 rounded-full bg-amber-50 px-2 py-px text-[10px] font-medium text-amber-800 ring-1 ring-amber-200 ring-inset dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25"
+                  >
+                    <TriangleAlert className="size-2.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                    {r.label}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs leading-relaxed">{r.explanation || r.label}</TooltipContent>
+              </Tooltip>
             ))}
         </div>
       )}

@@ -19,7 +19,7 @@ import { DetailContext } from '@/lib/detail';
 import { attentionReasons, canBeInSprint, featuresInSprint, isDone, matchesFilters, needsAction } from '@/lib/planning';
 import { copyItem } from '@/lib/copy-item';
 import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@/lib/shortcuts';
-import { ShortcutsHelp } from '@/components/shortcuts-help';
+import { ShortcutsHelp, VersionDialog } from '@/components/shortcuts-help';
 import { setTheme, useTheme } from '@/lib/theme';
 import { workspaceState } from '@/lib/workspace-state';
 import { openExternal } from '@/lib/desktop';
@@ -352,8 +352,9 @@ export default function App() {
   const detailRef = useRef(detailId);
   detailRef.current = detailId;
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [versionOpen, setVersionOpen] = useState(false);
   const helpRef = useRef(false);
-  helpRef.current = shortcutsOpen;
+  helpRef.current = shortcutsOpen || versionOpen;
 
   const getTarget = useCallback(() => {
     if (detailRef.current) return { id: detailRef.current, scope: document.querySelector('[data-slot="sheet-content"]') };
@@ -568,7 +569,18 @@ export default function App() {
             <span className="hidden text-xs text-muted-foreground md:inline">
               {auth?.user ? `${auth.user} · ${auth.method === 'device-code' ? 'device code' : 'Azure CLI'}` : progress?.detail || 'Connecting to SAN SA…'}
             </span>
-            {data && <TicketSearch data={data} getTarget={getTarget} onAction={doAction} onNavigate={goTo} onView={onView} showClosed={filters.showClosed} onShowShortcuts={() => setShortcutsOpen(true)} />}
+            {data && (
+              <TicketSearch
+                data={data}
+                getTarget={getTarget}
+                onAction={doAction}
+                onNavigate={goTo}
+                onView={onView}
+                showClosed={filters.showClosed}
+                onShowShortcuts={() => setShortcutsOpen(true)}
+                onShowVersion={() => setVersionOpen(true)}
+              />
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -622,6 +634,7 @@ export default function App() {
         />
       )}
       <ShortcutsHelp open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <VersionDialog open={versionOpen} onOpenChange={setVersionOpen} auth={auth} project={data?.project} />
       <Toaster position="bottom-right" />
     </TooltipProvider>
     </DetailContext.Provider>
