@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert, X } from 'lucide-react';
+import { Check, FlaskConical, KanbanSquare, Layers, Loader2, Moon, RefreshCw, Search, Sun, TriangleAlert, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,19 +10,21 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { api } from '@/api';
 import { SignIn } from '@/components/sign-in';
 import { PlanView } from '@/components/plan-view';
+import { StandUpView } from '@/components/standup-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
 import { clearDetailCache, ItemDetail, prefetchDetail } from '@/components/item-detail';
 import { TicketSearch } from '@/components/ticket-search';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
-import { attentionReasons, canBeInSprint, featuresInSprint, isDone, matchesFilters, needsAction } from '@/lib/planning';
+import { ALL_STANDUP_EMAILS, attentionReasons, canBeInSprint, featuresInSprint, isDone, matchesFilters, needsAction } from '@/lib/planning';
 import { copyItem } from '@/lib/copy-item';
 import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@/lib/shortcuts';
 import { ShortcutsHelp, VersionDialog } from '@/components/shortcuts-help';
 import { setTheme, useTheme } from '@/lib/theme';
 import { workspaceState } from '@/lib/workspace-state';
 import { openExternal } from '@/lib/desktop';
+import { mockStore } from '@/lib/mock-data';
 
 function ThemeToggle() {
   const dark = useTheme() === 'dark';
@@ -212,17 +214,38 @@ export default function App() {
   const [filters, setFilters] = useState({ search: '', showClosed: false });
   const [tab, setTab] = useState('plan');
   const [detailId, setDetailId] = useState(null);
+  const [standupSprint, setStandupSprint] = useState('');
+  const [standup, setStandup] = useState({ items: [], features: [], boards: {}, loading: false, error: null });
+  const [mockEnabled, setMockEnabled] = useState(() => mockStore.isEnabled());
+  const [mockPreset, setMockPreset] = useState(() => mockStore.getPreset());
   const detailCtx = useMemo(() => ({ openItem: setDetailId }), []);
-  const onItemPatched = useCallback(
-    (id, partial) => setData((d) => ({ ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...partial } : i)) })),
-    [],
-  );
+  const onItemPatched = useCallback((id, partial) => {
+    setData((d) => (d ? { ...d, items: d.items.map((i) => (i.id === id ? { ...i, ...partial } : i)) } : d));
+    setStandup((s) => ({ ...s, items: s.items.map((i) => (i.id === id ? { ...i, ...partial } : i)) }));
+  }, []);
 
   const checkAuth = useCallback(async () => {
     syncStartRef.current = Date.now();
     setElapsedMs(0);
     setProgress(INITIAL_PROGRESS);
     setAuth(await api.status().catch((e) => ({ signedIn: false, error: e.message })));
+  }, []);
+
+  const loadStandup = useCallback(async (targetSprint) => {
+    if (!targetSprint) return;
+    setStandup((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const res = await api.standup(targetSprint);
+      setStandup({
+        items: res.items || [],
+        features: res.features || [],
+        boards: res.boards || {},
+        loading: false,
+        error: null,
+      });
+    } catch (e) {
+      setStandup((s) => ({ ...s, loading: false, error: e.message }));
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -236,14 +259,56 @@ export default function App() {
     try {
       const overview = await api.overview();
       setData(overview);
-      workspaceState.reconcileWithOverview(overview);
+      const curSprint = overview.sprints?.find((s) => s.timeFrame === 'current')?.path || overview.sprints?.[0]?.path || '';
+      setStandupSprint((prev) => {
+        const next = prev && overview.sprints?.some((s) => s.path === prev) ? prev : curSprint;
+        if (next) loadStandup(next);
+        return next;
+      });
+      if (!mockStore.isEnabled()) {
+        workspaceState.reconcileWithOverview(overview);
+      }
     } catch (e) {
       if (e.status === 401) return checkAuth();
       setLoadError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [checkAuth]);
+  }, [checkAuth, loadStandup]);
+
+  const onMockMode = useCallback(
+    async (preset) => {
+      setDetailId(null);
+      clearDetailCache();
+      clearAncestors();
+      if (preset) {
+        mockStore.enable(preset);
+        setMockEnabled(true);
+        setMockPreset(preset);
+        setAuth({ signedIn: true, user: 'raulpo@microsoft.com (Mock)', method: 'cli' });
+        const ov = mockStore.overview();
+        setData(ov);
+        const curSprint = ov.sprints?.find((s) => s.timeFrame === 'current')?.path || ov.sprints?.[0]?.path || '';
+        setStandupSprint(curSprint);
+        loadStandup(curSprint);
+        toast.success(
+          preset === 'all-clear'
+            ? 'Mock sandbox loaded: All hygiene checks passing (Sapphiry)'
+            : 'Mock sandbox loaded: All compliance & UI cases',
+        );
+      } else {
+        mockStore.disable();
+        setMockEnabled(false);
+        setData(null);
+        setStandup({ items: [], features: [], boards: {}, loading: false, error: null });
+        toast.message('Exited mock sandbox — reloading live Azure DevOps data…');
+        const nextAuth = await api.status().catch((e) => ({ signedIn: false, error: e.message }));
+        setAuth(nextAuth);
+        if (nextAuth?.signedIn) await load();
+      }
+    },
+    [load, loadStandup],
+  );
 
   const isSyncing = !auth || loading;
   useEffect(() => {
@@ -346,9 +411,20 @@ export default function App() {
     [reasonsById, data],
   );
 
+  // Combined data for ItemDetail, TicketSearch, and shortcuts so Stand Up tickets also open and act seamlessly.
+  const detailData = useMemo(() => {
+    if (!data) return null;
+    if (!standup.items.length && !standup.features.length) return data;
+    const itemMap = new Map(data.items.map((i) => [i.id, i]));
+    for (const i of standup.items) if (!itemMap.has(i.id)) itemMap.set(i.id, i);
+    const featMap = new Map(data.features.map((f) => [f.id, f]));
+    for (const f of standup.features) if (!featMap.has(f.id)) featMap.set(f.id, f);
+    return { ...data, items: [...itemMap.values()], features: [...featMap.values()] };
+  }, [data, standup.items, standup.features]);
+
   // Linear-style shortcuts: act on the open ticket, else on the hovered card or row.
-  const dataRef = useRef(data);
-  dataRef.current = data;
+  const dataRef = useRef(detailData);
+  dataRef.current = detailData;
   const detailRef = useRef(detailId);
   detailRef.current = detailId;
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -415,7 +491,7 @@ export default function App() {
       }
       if (gAt && Date.now() - gAt < 1200 && !e.shiftKey) {
         gAt = 0;
-        const nav = { s: 'plan', f: 'features', a: 'attention', h: 'attention' }[k];
+        const nav = { s: 'plan', u: 'standup', f: 'features', a: 'attention', h: 'attention' }[k];
         if (nav) {
           e.preventDefault();
           goTo(nav);
@@ -440,11 +516,12 @@ export default function App() {
 
   const onUpdate = useCallback(
     async (item, patch) => {
-      const label = describe(patch, data, data.features);
+      const label = describe(patch, data, detailData?.features || data.features);
       const previous = item;
       setPendingIds((s) => new Set(s).add(item.id));
       if (!('parentId' in patch)) {
         setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, ...patch } : i)) }));
+        setStandup((s) => ({ ...s, items: s.items.map((i) => (i.id === item.id ? { ...i, ...patch } : i)) }));
       }
       try {
         const r = await api.update(item.id, patch);
@@ -453,10 +530,15 @@ export default function App() {
           clearAncestors();
           clearDetailCache();
           await load();
+        } else {
+          const merge = (i) =>
+            i.id === item.id ? { ...i, state: r.state, priority: r.priority ?? i.priority, iterationPath: r.iterationPath } : i;
+          setData((d) => ({ ...d, items: d.items.map(merge) }));
+          setStandup((s) => ({ ...s, items: s.items.map(merge) }));
         }
-        else setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? { ...i, state: r.state, priority: r.priority ?? i.priority, iterationPath: r.iterationPath } : i)) }));
       } catch (e) {
         setData((d) => ({ ...d, items: d.items.map((i) => (i.id === item.id ? previous : i)) }));
+        setStandup((s) => ({ ...s, items: s.items.map((i) => (i.id === item.id ? previous : i)) }));
         toast.error(`#${item.id}: could not save (${label})`, { description: e.message });
         if (e.status === 401) checkAuth();
       } finally {
@@ -467,7 +549,7 @@ export default function App() {
         });
       }
     },
-    [data, load, checkAuth],
+    [data, detailData, load, checkAuth],
   );
 
   const onMoveFeature = useCallback(
@@ -509,69 +591,119 @@ export default function App() {
     <DetailContext.Provider value={detailCtx}>
     <TooltipProvider delayDuration={300}>
       <Tabs value={tab} onValueChange={setTab} className="flex h-svh flex-col gap-0">
-        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
-          <TabsList className="h-8">
-            <TabsTrigger value="plan" className="text-xs">
-              <KanbanSquare /> My sprint
-            </TabsTrigger>
-            <TabsTrigger value="features" className="text-xs">
-              <Layers /> By Feature
-            </TabsTrigger>
-            <TabsTrigger value="attention" className="text-xs">
-              <TriangleAlert /> Hygiene
-              {attentionCount > 0 && (
-                <span className="ml-0.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 tabular-nums dark:bg-amber-300/15 dark:text-amber-200">{attentionCount}</span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-          <div className="group/filter relative w-56 transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-within:w-80 motion-reduce:transition-none">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={filterRef}
-              value={filters.search}
-              onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-              onKeyDown={(e) => {
-                if (e.key !== 'Escape') return;
-                e.stopPropagation();
-                if (filters.search) setFilters((f) => ({ ...f, search: '' }));
-                else e.currentTarget.blur();
-              }}
-              placeholder="Filter tickets"
-              title="Filter by id, title, tag or Feature (/)"
-              aria-label="Filter by id, title, tag or Feature"
-              className="h-8 pr-14 pl-8 text-xs"
-            />
-            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums">
-              {filters.search || filters.showClosed ? (
-                data && `${shownCount}/${totalCount}`
-              ) : (
-                <kbd className="rounded border bg-muted px-1 font-sans text-[10px] font-medium group-focus-within/filter:hidden">/</kbd>
-              )}
-            </span>
+        <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b px-4 py-2.5">
+          <div className="flex items-center gap-2.5">
+            <TabsList className="h-8">
+              <TabsTrigger value="plan" className="text-xs">
+                <KanbanSquare /> My sprint
+              </TabsTrigger>
+              <TabsTrigger value="features" className="text-xs">
+                <Layers /> By Feature
+              </TabsTrigger>
+              <TabsTrigger value="attention" className="text-xs">
+                <TriangleAlert /> Hygiene
+                {attentionCount > 0 && (
+                  <span className="ml-0.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 tabular-nums dark:bg-amber-300/15 dark:text-amber-200">{attentionCount}</span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+            <span aria-hidden className="h-5 w-px bg-border" />
+            <TabsList className="h-8">
+              <TabsTrigger value="standup" className="text-xs">
+                <Users /> Stand Up
+              </TabsTrigger>
+            </TabsList>
           </div>
-          {filters.showClosed && (
-            <button
-              type="button"
-              onClick={() => onView('toggle-closed')}
-              title="Hide closed tickets (Shift D)"
-              className="group/chip flex h-7 items-center gap-1 rounded-full border bg-muted/60 pr-1.5 pl-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              Incl. closed · 21 days
-              <X className="size-3.5 opacity-60 group-hover/chip:opacity-100" />
-            </button>
-          )}
-          <div className="ml-auto flex items-center gap-2">
+
+          <div className="flex items-center justify-center gap-2">
+            <div className="group/filter relative w-56 transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] focus-within:w-80 motion-reduce:transition-none">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={filterRef}
+                value={filters.search}
+                onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') return;
+                  e.stopPropagation();
+                  if (filters.search) setFilters((f) => ({ ...f, search: '' }));
+                  else e.currentTarget.blur();
+                }}
+                placeholder="Filter tickets"
+                title="Filter by id, title, tag or Feature (/)"
+                aria-label="Filter by id, title, tag or Feature"
+                className="h-8 pr-14 pl-8 text-xs"
+              />
+              <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-[11px] text-muted-foreground tabular-nums">
+                {filters.search || filters.showClosed ? (
+                  data && `${shownCount}/${totalCount}`
+                ) : (
+                  <kbd className="rounded border bg-muted px-1 font-sans text-[10px] font-medium group-focus-within/filter:hidden">/</kbd>
+                )}
+              </span>
+            </div>
+            {filters.showClosed && (
+              <button
+                type="button"
+                onClick={() => onView('toggle-closed')}
+                title="Hide closed tickets (Shift D)"
+                className="group/chip flex h-7 items-center gap-1 rounded-full border bg-muted/60 pr-1.5 pl-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                Incl. closed · 21 days
+                <X className="size-3.5 opacity-60 group-hover/chip:opacity-100" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            {mockEnabled && (
+              <div className="flex h-7 items-center gap-1 rounded-full border border-violet-300 bg-violet-50/90 pr-1 pl-2.5 text-xs font-medium text-violet-900 dark:border-violet-400/35 dark:bg-violet-400/15 dark:text-violet-200">
+                <FlaskConical className="size-3.5 shrink-0" />
+                <span>Mock:</span>
+                <button
+                  type="button"
+                  onClick={() => onMockMode('all-cases')}
+                  className={`rounded-full px-2 py-0.5 text-[11px] transition-colors ${
+                    mockPreset === 'all-cases'
+                      ? 'bg-violet-600 text-white dark:bg-violet-300 dark:text-violet-950'
+                      : 'hover:bg-violet-200/70 dark:hover:bg-violet-400/20'
+                  }`}
+                >
+                  All cases
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMockMode('all-clear')}
+                  className={`rounded-full px-2 py-0.5 text-[11px] transition-colors ${
+                    mockPreset === 'all-clear'
+                      ? 'bg-violet-600 text-white dark:bg-violet-300 dark:text-violet-950'
+                      : 'hover:bg-violet-200/70 dark:hover:bg-violet-400/20'
+                  }`}
+                >
+                  Clean (Sapphiry)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMockMode(null)}
+                  title="Exit mock sandbox and return to live Azure DevOps"
+                  className="ml-0.5 inline-flex size-5 items-center justify-center rounded-full hover:bg-violet-200/80 dark:hover:bg-violet-400/25"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            )}
             {data && loading && (
               <span className="hidden max-w-64 truncate text-xs text-muted-foreground lg:inline" aria-live="polite">
                 {progress?.detail || progress?.title}
               </span>
             )}
-            <span className="hidden text-xs text-muted-foreground md:inline">
-              {auth?.user ? `${auth.user} · ${auth.method === 'device-code' ? 'device code' : 'Azure CLI'}` : progress?.detail || 'Connecting to SAN SA…'}
-            </span>
-            {data && (
+            {!mockEnabled && (
+              <span className="hidden text-xs text-muted-foreground md:inline">
+                {auth?.user ? `${auth.user} · ${auth.method === 'device-code' ? 'device code' : 'Azure CLI'}` : progress?.detail || 'Connecting to SAN SA…'}
+              </span>
+            )}
+            {detailData && (
               <TicketSearch
-                data={data}
+                data={detailData}
                 getTarget={getTarget}
                 onAction={doAction}
                 onNavigate={goTo}
@@ -579,18 +711,20 @@ export default function App() {
                 showClosed={filters.showClosed}
                 onShowShortcuts={() => setShortcutsOpen(true)}
                 onShowVersion={() => setVersionOpen(true)}
+                onMockMode={onMockMode}
+                mockEnabled={mockEnabled}
               />
             )}
             <Button
               size="sm"
               variant="outline"
-              onClick={load}
+              onClick={() => (mockEnabled ? onMockMode(mockPreset) : load())}
               disabled={!auth || loading}
               aria-label="Refresh from Azure DevOps"
-              title={data ? `Synced ${new Date(data.generatedAt).toLocaleTimeString()}` : undefined}
+              title={mockEnabled ? 'Reset mock sandbox data' : data ? `Synced ${new Date(data.generatedAt).toLocaleTimeString()}` : undefined}
             >
               <RefreshCw className={!auth || loading ? 'animate-spin' : ''} />
-              Refresh
+              {mockEnabled ? 'Reset mock' : 'Refresh'}
             </Button>
             <ThemeToggle />
           </div>
@@ -612,6 +746,23 @@ export default function App() {
               <TabsContent value="plan" forceMount className="h-full min-h-0 data-[state=inactive]:hidden">
                 <PlanView {...viewProps} items={sprintItems} />
               </TabsContent>
+              <TabsContent value="standup" forceMount className="h-full min-h-0 data-[state=inactive]:hidden">
+                <StandUpView
+                  data={data}
+                  standup={standup}
+                  sprintPath={standupSprint}
+                  onSprintChange={(next) => {
+                    setStandupSprint(next);
+                    loadStandup(next);
+                  }}
+                  onRefreshStandup={() => loadStandup(standupSprint)}
+                  filters={filters}
+                  pendingIds={pendingIds}
+                  onUpdate={onUpdate}
+                  onMoveFeature={onMoveFeature}
+                  active={tab === 'standup'}
+                />
+              </TabsContent>
               <TabsContent value="features" forceMount className="h-full min-h-0 overflow-y-auto data-[state=inactive]:hidden">
                 <FeaturesView {...viewProps} onMoveFeature={onMoveFeature} />
               </TabsContent>
@@ -622,11 +773,11 @@ export default function App() {
           )}
         </div>
       </Tabs>
-      {data && (
+      {detailData && (
         <ItemDetail
           id={detailId}
-          data={data}
-          features={data.features}
+          data={detailData}
+          features={detailData.features}
           pendingIds={pendingIds}
           onUpdate={onUpdate}
           onItemPatched={onItemPatched}

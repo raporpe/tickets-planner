@@ -34,6 +34,13 @@ import {
   BOARD_COLUMNS,
   columnRank,
 } from '../theme-tones.js';
+import {
+  STANDUP_TEAM,
+  ALL_STANDUP_EMAILS,
+  matchTeamMember,
+  STANDUP_COLUMNS,
+  standupColumnOf,
+} from '../standup-team.js';
 import { WorkspaceState } from '../../lib/workspace-state.js';
 
 const MOCK_OVERVIEW = {
@@ -282,5 +289,28 @@ describe('WorkspaceState LWW merge and reconciliation', () => {
     assert.equal(view['203'], undefined);
     assert.equal(state._layoutRecords['202'].deleted, true);
     assert.equal(state._layoutRecords['203'].deleted, true);
+  });
+});
+
+describe('standup-team domain', () => {
+  it('defines the 11 Stand Up team members and resolves aliases and board columns', () => {
+    assert.equal(STANDUP_TEAM.length, 11);
+    assert.ok(ALL_STANDUP_EMAILS.includes('raulpo@microsoft.com'));
+    assert.ok(ALL_STANDUP_EMAILS.includes('amarchesin@microsoft.com'));
+    assert.ok(ALL_STANDUP_EMAILS.includes('marchesin.angelo@microsoft.com'));
+    assert.ok(ALL_STANDUP_EMAILS.includes('tianpli@microsoft.com'));
+    assert.ok(ALL_STANDUP_EMAILS.includes('clairewang@microsoft.com'));
+    assert.ok(ALL_STANDUP_EMAILS.includes('jiaruigui@microsoft.com'));
+
+    const angelo = STANDUP_TEAM.find((m) => m.id === 'amarchesin');
+    assert.equal(matchTeamMember({ assignedTo: { email: 'AMARCHESIN@microsoft.com' } }, angelo), true);
+    assert.equal(matchTeamMember({ assignedTo: { email: 'marchesin.angelo@microsoft.com' } }, angelo), true);
+    assert.equal(matchTeamMember({ assignedTo: { email: 'raulpo@microsoft.com' } }, angelo), false);
+
+    assert.equal(STANDUP_COLUMNS.length, 3);
+    assert.equal(standupColumnOf({ state: 'New' }), 'todo');
+    assert.equal(standupColumnOf({ state: 'Active' }), 'active');
+    assert.equal(standupColumnOf({ state: 'Resolved' }), 'done');
+    assert.equal(standupColumnOf({ state: 'Closed' }), 'done');
   });
 });

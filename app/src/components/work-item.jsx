@@ -1,4 +1,4 @@
-import { Check, ChevronsUpDown, ExternalLink, Info, TriangleAlert, Zap } from 'lucide-react';
+import { Check, ChevronsUpDown, ExternalLink, Flame, Info, TriangleAlert } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -211,11 +211,11 @@ function getGroupedBoardFeatures(features) {
   return cached;
 }
 
-export function FeaturePicker({ item, features, onPick, disabled, compact, label, className }) {
+export function FeaturePicker({ item, features, onPick, disabled, compact, quiet = false, label, className }) {
   const { open, onOpenChange: setOpen, ref } = useShortcutOpen('feature', item.id);
   const { byId, byColumn } = getGroupedBoardFeatures(features);
   const current = byId.get(item.featureId);
-  const hasIssue = requiresFeature(item.type) && (!current || !item.onBoard);
+  const hasIssue = !quiet && requiresFeature(item.type) && (!current || !item.onBoard);
   const warningText = hasIssue ? featureComplianceExplanation(item, current) : null;
 
   const triggerButton = (
@@ -333,7 +333,7 @@ export function ReasonBadges({ reasons, info = false }) {
   );
 }
 
-export function WorkItemCard({ item, data, features, pending, reasons, onUpdate, onDragStart, grabbable, className, ...rest }) {
+export function WorkItemCard({ item, data, features, pending, reasons, quiet = false, onUpdate, onDragStart, grabbable, className, ...rest }) {
   const { openItem } = useDetail();
   const grab = !pending && (onDragStart || grabbable);
   const unplanned = isSprintUnplanned(item);
@@ -366,7 +366,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
           <Tooltip>
             <TooltipTrigger asChild>
               <span aria-label="Unplanned" className="inline-flex items-center rounded-full bg-amber-50 p-1 text-amber-800 ring-1 ring-amber-200/80 ring-inset dark:bg-amber-300/10 dark:text-amber-200 dark:ring-amber-300/25">
-                <Zap className="size-2.5" />
+                <Flame className="size-2.5 fill-current" />
               </span>
             </TooltipTrigger>
             <TooltipContent>Brought into the sprint unplanned (Sprint-Unplanned)</TooltipContent>
@@ -385,7 +385,7 @@ export function WorkItemCard({ item, data, features, pending, reasons, onUpdate,
         {item.title}
       </button>
       <div className="mt-1 -ml-1">
-        <FeaturePicker item={item} features={features} onPick={(parentId) => onUpdate(item, { parentId })} disabled={pending} compact />
+        <FeaturePicker item={item} features={features} onPick={(parentId) => onUpdate(item, { parentId })} disabled={pending} compact quiet={quiet} />
       </div>
       {reasons?.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">

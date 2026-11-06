@@ -37,7 +37,7 @@ function search(all, q) {
 }
 
 /** Ctrl/Cmd+K: find a ticket by title, id or ADO link, or run an action on the current ticket. */
-export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts, onShowVersion, onView, showClosed }) {
+export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShortcuts, onShowVersion, onMockMode, mockEnabled, onView, showClosed }) {
   const { openItem } = useDetail();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -90,6 +90,7 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
   const views = id ? [] : VIEW_ACTIONS.filter((a) => !words.length || match(viewLabel(a)));
   const showHelp = words && match('Keyboard shortcuts help');
   const showVersion = !id && (!words.length || match(`Show version about update v${pkg.version}`));
+  const showMock = mockEnabled || /^(\/mock|dev:mock)\b/i.test(q);
 
   return (
     <>
@@ -162,7 +163,7 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
               ))}
             </CommandGroup>
           )}
-          {(showHelp || showVersion) && (
+          {(showHelp || showVersion || showMock) && (
             <CommandGroup heading="Help">
               {showHelp && (
                 <CommandItem value="help-shortcuts" onSelect={() => later(onShowShortcuts)}>
@@ -178,6 +179,27 @@ export function TicketSearch({ data, getTarget, onAction, onNavigate, onShowShor
                   <span data-slot="command-shortcut" className="ml-auto font-mono text-xs text-muted-foreground tabular-nums">
                     v{pkg.version}
                   </span>
+                </CommandItem>
+              )}
+              {showMock && !mockEnabled && (
+                <CommandItem value="dev-mock-cases" onSelect={() => later(() => onMockMode?.('all-cases'))}>
+                  Load mock data (all compliance &amp; UI cases)
+                  <span data-slot="command-shortcut" className="ml-auto text-xs text-muted-foreground">
+                    Sandbox
+                  </span>
+                </CommandItem>
+              )}
+              {showMock && !mockEnabled && (
+                <CommandItem value="dev-mock-clean" onSelect={() => later(() => onMockMode?.('all-clear'))}>
+                  Load mock data (all hygiene passing · Sapphiry)
+                  <span data-slot="command-shortcut" className="ml-auto text-xs text-muted-foreground">
+                    Sandbox
+                  </span>
+                </CommandItem>
+              )}
+              {showMock && mockEnabled && (
+                <CommandItem value="dev-mock-exit" onSelect={() => later(() => onMockMode?.(null))}>
+                  Exit mock mode (return to live Azure DevOps)
                 </CommandItem>
               )}
             </CommandGroup>

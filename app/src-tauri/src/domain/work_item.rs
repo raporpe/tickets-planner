@@ -3,6 +3,20 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 
 pub const TYPES: [&str; 3] = ["Task", "Bug", "User Story"];
+pub const STANDUP_USERS: [&str; 12] = [
+    "pboyanoivars@microsoft.com",
+    "raulpo@microsoft.com",
+    "soranalatas@microsoft.com",
+    "amarchesin@microsoft.com",
+    "marchesin.angelo@microsoft.com",
+    "gfornonssera@microsoft.com",
+    "nlattuada@microsoft.com",
+    "gemarques@microsoft.com",
+    "masaucaortiz@microsoft.com",
+    "tianpli@microsoft.com",
+    "clairewang@microsoft.com",
+    "jiaruigui@microsoft.com",
+];
 pub const RICH: [&str; 3] = [
     "System.Description",
     "Microsoft.VSTS.TCM.ReproSteps",
@@ -93,7 +107,12 @@ pub fn person(value: &Value) -> Value {
     if value.is_null() {
         Value::Null
     } else {
-        json!({"id":value["id"],"name":value["displayName"],"email":value["uniqueName"]})
+        json!({
+            "id":value["id"],
+            "name":value["displayName"],
+            "email":value["uniqueName"],
+            "imageUrl":value["imageUrl"]
+        })
     }
 }
 
@@ -149,6 +168,25 @@ pub fn overview_query(sprints: &Value) -> String {
             .map(|t| format!("'{t}'"))
             .collect::<Vec<_>>()
             .join(",")
+    )
+}
+
+pub fn standup_query(users: &[String], sprint_path: &str) -> String {
+    let emails: Vec<String> = users
+        .iter()
+        .map(|u| u.trim())
+        .filter(|u| !u.is_empty())
+        .map(|u| format!("'{}'", u.replace('\'', "''")))
+        .collect();
+    let types = TYPES
+        .iter()
+        .map(|t| format!("'{t}'"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let safe_sprint = sprint_path.replace('\'', "''");
+    format!(
+        "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AssignedTo] IN ({}) AND [System.WorkItemType] IN ({types}) AND [System.State] <> 'Removed' AND [System.IterationPath] = '{safe_sprint}'",
+        emails.join(",")
     )
 }
 
