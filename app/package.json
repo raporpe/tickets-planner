@@ -1,7 +1,7 @@
 {
   "name": "tickets-planner",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.4.0",
   "type": "module",
   "description": "Local web UI to review Azure DevOps tickets and plan sprints",
   "scripts": {
@@ -10,7 +10,7 @@
     "build": "vite build",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "desktop:fast": "vite build && cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "desktop:fast": "tauri build --no-bundle",
     "desktop:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test": "node --test src/domain/__tests__/*.test.js && cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"

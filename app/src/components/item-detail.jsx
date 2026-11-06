@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Flame, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, TriangleAlert, Unlink, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, Flame, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, Loader2, MessageSquare, Pencil, Plus, RefreshCw, TriangleAlert, Unlink, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,9 @@ import { FeaturePicker, PrioritySelect, SprintSelect, StatePill, StateSelect, Ty
 import { RichEditor, RichView } from '@/components/rich-text';
 import { HierarchyTree, MissingParent } from '@/components/hierarchy';
 import { api } from '@/api';
+import { isDesktop } from '@/lib/desktop';
 import { useDetail } from '@/lib/detail';
-import { CURRENT_CYCLE_TAG, hasCycleTag, hasPlatformTag, isSprintUnplanned, isSprintUnplannedTag, missingTagsExplanation, PLATFORM_TAGS, SPRINT_UNPLANNED_TAG } from '@/lib/planning';
+import { CURRENT_CYCLE_TAG, hasCycleTag, hasPlatformTag, isSprintUnplanned, isSprintUnplannedTag, missingTagsExplanation, PLATFORM_TAGS, SPRINT_UNPLANNED_TAG, STANDUP_TEAM } from '@/lib/planning';
 import { isTyping, overlayOpen, runAction, takeQueued, TICKET_ACTIONS, useAction } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
@@ -149,24 +150,6 @@ function ago(d) {
   return rtf.format(Math.round(s / div[unit]), unit);
 }
 const fullDate = (d) => (d ? new Date(d).toLocaleString() : '');
-
-function Meta({ label, children }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 truncate text-[13px]">{children || <span className="text-muted-foreground">—</span>}</dd>
-    </div>
-  );
-}
-
-function When({ date, by }) {
-  return (
-    <>
-      <span title={fullDate(date)}>{ago(date)}</span>
-      {by && <span className="block truncate text-xs text-muted-foreground">by {by}</span>}
-    </>
-  );
-}
 
 function Hierarchy({ detail, item, features, onPick, disabled, onOpen }) {
   return (
@@ -573,6 +556,105 @@ function FieldSection({ refName, html, markdown, onSave, onEditingChange }) {
   );
 }
 
+const RECENT_COMMENT_MS = 3 * 86400000;
+function isRecentComment(comment) {
+  const raw = comment?.modifiedDate || comment?.createdDate;
+  if (!raw) return false;
+  const ts = Date.parse(raw);
+  return Number.isFinite(ts) && Date.now() - ts <= RECENT_COMMENT_MS;
+}
+
+const commentAvatarCache = new Map();
+const commentAvatarInflight = new Map();
+
+function resolveUserAvatarUrl(user) {
+  if (!user) return null;
+  let url = user.imageUrl;
+  if (!url && user.email) {
+    const emailLower = String(user.email).toLowerCase();
+    const matched = STANDUP_TEAM.find((m) => m.aliases.some((a) => a.toLowerCase() === emailLower));
+    if (matched) url = matched.avatarUrl;
+  }
+  if (!url) return null;
+  if (url.includes('/_apis/GraphProfile/MemberAvatars/') && !url.includes('size=')) {
+    url = `${url}${url.includes('?') ? '&' : '?'}size=2`;
+  }
+  return url;
+}
+
+function fetchCommentAvatar(url) {
+  if (!url || !isDesktop) return Promise.resolve(null);
+  if (commentAvatarCache.has(url)) return Promise.resolve(commentAvatarCache.get(url));
+  if (commentAvatarInflight.has(url)) return commentAvatarInflight.get(url);
+  const p = api
+    .attachment(url)
+    .then(({ mime, data }) => {
+      if (!data) return null;
+      const cleanMime = String(mime || 'image/png').split(';')[0].trim() || 'image/png';
+      const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type: cleanMime }));
+      commentAvatarCache.set(url, objectUrl);
+      commentAvatarInflight.delete(url);
+      return objectUrl;
+    })
+    .catch(() => {
+      commentAvatarInflight.delete(url);
+      return null;
+    });
+  commentAvatarInflight.set(url, p);
+  return p;
+}
+
+function CommentAvatar({ user, mine }) {
+  const url = resolveUserAvatarUrl(user);
+  const [src, setSrc] = useState(() => (url && commentAvatarCache.get(url)) || null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!url) {
+      setSrc(null);
+      return undefined;
+    }
+    if (commentAvatarCache.has(url)) {
+      setSrc(commentAvatarCache.get(url));
+      return undefined;
+    }
+    fetchCommentAvatar(url).then((resolved) => {
+      if (alive && resolved) setSrc(resolved);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
+  const initials = (user?.name || '?')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('');
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="mt-0.5 size-7 shrink-0 rounded-full object-cover ring-1 ring-border/70"
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold',
+        mine ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground',
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
 function Comment({ comment, mine, onSave, onEditingChange }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -580,25 +662,18 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
     if (!editing) onEditingChange(false);
   }, [editing, onEditingChange]);
   const edited = comment.modifiedDate && comment.version > 1;
-  const initials = (comment.createdBy?.name || '?')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('');
+  const recent = isRecentComment(comment);
 
   return (
-    <li className="flex gap-3">
-      <span
-        aria-hidden
-        className={cn(
-          'mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold',
-          mine ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground',
-        )}
-      >
-        {initials}
-      </span>
+    <li
+      className={cn(
+        'flex gap-3 transition-colors',
+        recent && 'rounded-lg bg-sky-50/55 px-2.5 py-2 ring-1 ring-sky-200/70 ring-inset dark:bg-sky-400/[0.07] dark:ring-sky-400/20',
+      )}
+    >
+      <CommentAvatar user={comment.createdBy} mine={mine} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-medium">{comment.createdBy?.name}</span>
           <time className="text-xs text-muted-foreground" dateTime={comment.createdDate} title={fullDate(comment.createdDate)}>
             {ago(comment.createdDate)}
@@ -606,6 +681,14 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
           {edited && (
             <span className="text-xs text-muted-foreground" title={fullDate(comment.modifiedDate)}>
               · edited
+            </span>
+          )}
+          {recent && (
+            <span
+              title="Posted or updated in the last 3 days"
+              className="inline-flex items-center rounded-full bg-sky-100/90 px-1.5 py-px text-[10px] font-semibold text-sky-800 ring-1 ring-sky-300/60 ring-inset dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-400/30"
+            >
+              Recent
             </span>
           )}
           {mine && !editing && (
@@ -637,6 +720,85 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
         </div>
       </div>
     </li>
+  );
+}
+
+function CommentsSection({ detail, data, onAdd, onEdit, tracker }) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+  }, [detail.id]);
+
+  const comments = detail.comments || [];
+  // Always keep the latest comment (and any recent <3d comment up to 2) visible; collapse the rest when > 1
+  const visibleCount = comments.length <= 2 ? comments.length : isRecentComment(comments[1]) ? 2 : 1;
+  const visibleComments = comments.slice(0, visibleCount);
+  const olderComments = comments.slice(visibleCount);
+  const hasRecent = comments.some(isRecentComment);
+
+  return (
+    <section aria-label="Comments">
+      <SectionHeader>
+        <span className="inline-flex items-center gap-1.5">
+          <MessageSquare className="size-3.5" /> Comments
+          <span className="tabular-nums">{detail.commentCount}</span>
+          {hasRecent && (
+            <span className="ml-1 rounded-full bg-sky-100/90 px-1.5 py-px text-[10px] font-semibold tracking-normal text-sky-800 normal-case ring-1 ring-sky-300/60 ring-inset dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-400/30">
+              Recent activity
+            </span>
+          )}
+        </span>
+      </SectionHeader>
+      <NewComment key={`new-${detail.id}`} id={detail.id} onAdd={onAdd} onEditingChange={tracker('new-comment')} />
+      {visibleComments.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-3">
+          {visibleComments.map((c) => (
+            <Comment
+              key={c.id}
+              comment={c}
+              mine={c.createdBy?.id === data?.me?.id}
+              onSave={onEdit}
+              onEditingChange={tracker(`comment-${c.id}`)}
+            />
+          ))}
+        </ul>
+      )}
+      {olderComments.length > 0 && (
+        <div className="mt-2.5">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <ChevronDown className={cn('size-3.5 transition-transform duration-200', expanded && 'rotate-180')} />
+            {expanded
+              ? `Hide ${olderComments.length} older ${olderComments.length === 1 ? 'comment' : 'comments'}`
+              : `Show ${olderComments.length} older ${olderComments.length === 1 ? 'comment' : 'comments'}`}
+          </button>
+          <div
+            className={cn(
+              'grid transition-[grid-template-rows,opacity] duration-220 ease-out',
+              expanded ? 'mt-2.5 grid-rows-[1fr] opacity-100' : 'pointer-events-none grid-rows-[0fr] opacity-0',
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <ul className="flex flex-col gap-3">
+                {olderComments.map((c) => (
+                  <Comment
+                    key={c.id}
+                    comment={c}
+                    mine={c.createdBy?.id === data?.me?.id}
+                    onSave={onEdit}
+                    onEditingChange={tracker(`comment-${c.id}`)}
+                  />
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1182,7 +1344,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-6 px-5 py-4">
+              <div className="flex flex-col gap-4 px-5 py-3.5">
                 <Hierarchy
                   detail={detail}
                   item={item}
@@ -1191,17 +1353,25 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                   disabled={pending}
                   onOpen={(next) => requestLeave(() => openItem(next))}
                 />
-                <section aria-label="Details">
-                  <SectionHeader>Details</SectionHeader>
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-                    <Meta label="Assigned to">{who(detail.assignedTo)?.replace(/^you$/, 'You')}</Meta>
-                    <Meta label="Area">{detail.areaPath?.replace(/^SAN SA\\?/, '') || 'SAN SA'}</Meta>
-                    <Meta label="Created">
-                      <When date={detail.createdDate} by={who(detail.createdBy)} />
-                    </Meta>
-                    <Meta label="Last changed">
-                      <When date={detail.changedDate} by={who(detail.changedBy)} />
-                    </Meta>
+                <section aria-label="Details" className="flex flex-col gap-2">
+                  {(detail.createdDate || detail.changedDate) && (
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                      {detail.createdDate && (
+                        <span title={fullDate(detail.createdDate)}>
+                          Created {ago(detail.createdDate)}
+                          {who(detail.createdBy) ? ` by ${who(detail.createdBy)}` : ''}
+                        </span>
+                      )}
+                      {detail.createdDate && detail.changedDate && <span aria-hidden>·</span>}
+                      {detail.changedDate && (
+                        <span title={fullDate(detail.changedDate)}>
+                          Updated {ago(detail.changedDate)}
+                          {who(detail.changedBy) ? ` by ${who(detail.changedBy)}` : ''}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  <dl>
                     <TagsEditor detail={detail} disabled={pending || savingTags} onSaveTags={(next) => saveTags(next)} />
                   </dl>
                 </section>
@@ -1226,16 +1396,16 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                       <Skeleton className="h-8 w-full" />
                     </section>
                     <section>
-                      <SectionHeader>Description</SectionHeader>
-                      <Skeleton className="h-28 w-full" />
-                    </section>
-                    <section>
                       <SectionHeader>
                         <span className="inline-flex items-center gap-1.5">
                           <MessageSquare className="size-3.5" /> Comments
                         </span>
                       </SectionHeader>
                       <Skeleton className="h-14 w-full" />
+                    </section>
+                    <section>
+                      <SectionHeader>Description</SectionHeader>
+                      <Skeleton className="h-28 w-full" />
                     </section>
                   </>
                 ) : (
@@ -1250,6 +1420,14 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                       onEditingChange={tracker('pr-link')}
                     />
 
+                    <CommentsSection
+                      detail={detail}
+                      data={data}
+                      onAdd={addComment}
+                      onEdit={editComment}
+                      tracker={tracker}
+                    />
+
                     {fieldsFor(detail).map((ref) => (
                       <FieldSection
                         key={`${detail.id}-${ref}`}
@@ -1260,29 +1438,6 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                         onEditingChange={tracker(ref)}
                       />
                     ))}
-
-                    <section>
-                      <SectionHeader>
-                        <span className="inline-flex items-center gap-1.5">
-                          <MessageSquare className="size-3.5" /> Comments
-                          <span className="tabular-nums">{detail.commentCount}</span>
-                        </span>
-                      </SectionHeader>
-                      <NewComment key={`new-${detail.id}`} id={detail.id} onAdd={addComment} onEditingChange={tracker('new-comment')} />
-                      {detail.comments.length > 0 && (
-                        <ul className="mt-4 flex flex-col gap-4">
-                          {detail.comments.map((c) => (
-                            <Comment
-                              key={c.id}
-                              comment={c}
-                              mine={c.createdBy?.id === data?.me?.id}
-                              onSave={editComment}
-                              onEditingChange={tracker(`comment-${c.id}`)}
-                            />
-                          ))}
-                        </ul>
-                      )}
-                    </section>
                   </>
                 )}
               </div>
