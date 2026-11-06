@@ -3,7 +3,10 @@ use crate::{
     domain::{
         error::{enc, positive_id, required, Error, Result},
         feature::{is_on_board, map_feature, map_feature_columns, COLUMN, FEATURE_BATCH_FIELDS},
-        pull_request::{map_pr, parse_pr_ref, sort_pull_requests, PR_ARTIFACT},
+        pull_request::{
+            map_github_pr, map_pr, parse_github_pr_url, parse_pr_ref, sort_pull_requests, PrRef,
+            PR_ARTIFACT,
+        },
         sprint::map_sprints,
         work_item::{
             add, array, children, comment, done, id, is_closed_or_removed, is_sprintable,
@@ -50,6 +53,116 @@ pub struct PlannerService {
     nodes: Mutex<HashMap<u64, (Value, Option<u64>)>>,
     me_email: Mutex<String>,
     board_state: Mutex<Value>,
+    team_pool: Mutex<Option<(Instant, Vec<Value>)>>,
+}
+
+const SEARCH_FIELDS: [&str; 10] = [
+    "System.Id",
+    "System.WorkItemType",
+    "System.Title",
+    "System.State",
+    "Microsoft.VSTS.Common.Priority",
+    "System.IterationPath",
+    "System.AssignedTo",
+    "System.ChangedDate",
+    "System.CreatedDate",
+    "System.Tags",
+];
+
+fn is_standup_member(assigned_to: &Value) -> bool {
+    let email = {
+        let e = text(&assigned_to["email"]);
+        if e.is_empty() {
+            text(&assigned_to["uniqueName"])
+        } else {
+            e
+        }
+    }
+    .to_ascii_lowercase();
+    if !email.is_empty() && STANDUP_USERS.iter().any(|u| u.eq_ignore_ascii_case(&email)) {
+        return true;
+    }
+    let name = {
+        let n = text(&assigned_to["name"]);
+        if n.is_empty() {
+            text(&assigned_to["displayName"])
+        } else {
+            n
+        }
+    }
+    .to_ascii_lowercase();
+    const NAMES: [&str; 12] = [
+        "paula boyano",
+        "raul portugues",
+        "soran alatas",
+        "soran zana alatas",
+        "angelo marchesin",
+        "gemma fornons",
+        "nicolas lattuada",
+        "george marques",
+        "marina sauca",
+        "tianpei li",
+        "claire wang",
+        "jiarui gui",
+    ];
+    !name.is_empty() && NAMES.iter().any(|n| name.contains(n))
+}
+
+fn recency_ts(item: &Value) -> &str {
+    let changed = text(&item["changedDate"]);
+    let created = text(&item["createdDate"]);
+    if changed >= created {
+        changed
+    } else {
+        created
+    }
+}
+
+fn matches_search_words(item: &Value, words: &[String], parsed_id: Option<u64>) -> bool {
+    let wid = id(item);
+    if let Some(pid) = parsed_id {
+        if wid == pid || wid.to_string().starts_with(&pid.to_string()) {
+            return true;
+        }
+    }
+    if words.is_empty() {
+        return true;
+    }
+    let tags_str = array(&item["tags"])
+        .iter()
+        .map(text)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let hay = format!(
+        "{} {} {} {} {}",
+        wid,
+        text(&item["title"]),
+        tags_str,
+        text(&item["assignedTo"]["name"]),
+        text(&item["assignedTo"]["email"])
+    )
+    .to_lowercase();
+    words.iter().all(|w| hay.contains(w))
+}
+
+fn parse_search_ticket_id(q: &str) -> Option<u64> {
+    let s = q.trim();
+    if let Some(pos) = s.to_ascii_lowercase().find("_workitems/edit/") {
+        let rest = &s[pos + "_workitems/edit/".len()..];
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.parse::<u64>() {
+            if n >= 100 {
+                return Some(n);
+            }
+        }
+    }
+    let stripped = s
+        .strip_prefix("AB#")
+        .or_else(|| s.strip_prefix("ab#"))
+        .or_else(|| s.strip_prefix("Ab#"))
+        .or_else(|| s.strip_prefix('#'))
+        .unwrap_or(s);
+    stripped.parse::<u64>().ok().filter(|n| *n >= 100)
 }
 
 impl PlannerService {
@@ -62,6 +175,7 @@ impl PlannerService {
             nodes: Mutex::new(HashMap::new()),
             me_email: Mutex::new(String::new()),
             board_state: Mutex::new(json!({})),
+            team_pool: Mutex::new(None),
         })
     }
 
@@ -75,6 +189,7 @@ impl PlannerService {
             nodes: Mutex::new(HashMap::new()),
             me_email: Mutex::new(String::new()),
             board_state: Mutex::new(json!({})),
+            team_pool: Mutex::new(None),
         })
     }
 
@@ -742,6 +857,185 @@ impl PlannerService {
         }))
     }
 
+    fn map_search_item(&self, wi: &Value) -> Value {
+        let f = &wi["fields"];
+        let assigned = person(&f["System.AssignedTo"]);
+        let is_team = is_standup_member(&assigned);
+        json!({
+            "id": wi["id"],
+            "type": f["System.WorkItemType"],
+            "title": f["System.Title"],
+            "state": f["System.State"],
+            "priority": f["Microsoft.VSTS.Common.Priority"],
+            "iterationPath": f["System.IterationPath"],
+            "assignedTo": assigned,
+            "changedDate": f["System.ChangedDate"],
+            "createdDate": f["System.CreatedDate"],
+            "tags": tags(f),
+            "isTeamMember": is_team,
+            "url": self.ado.edit_url(id(wi))
+        })
+    }
+
+    async fn get_team_pool(&self) -> Vec<Value> {
+        if let Some((ts, cached)) = self.team_pool.lock().unwrap().as_ref() {
+            if ts.elapsed().as_secs() < 45 {
+                return cached.clone();
+            }
+        }
+        let emails: Vec<String> = STANDUP_USERS.iter().map(|u| format!("'{u}'")).collect();
+        let wiql_path = format!(
+            "/{}/_apis/wit/wiql?$top=160&api-version=7.1",
+            self.ado.project_encoded()
+        );
+        let query = format!(
+            "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AssignedTo] IN ({}) AND [System.WorkItemType] IN ('Task','Bug','User Story','Feature') AND [System.State] <> 'Removed' AND ([System.State] NOT IN ('Closed','Done') OR [System.ChangedDate] >= @Today - 90) ORDER BY [System.ChangedDate] DESC",
+            emails.join(",")
+        );
+        let Ok(res) = self
+            .ado
+            .request_json("POST", &wiql_path, Some(json!({"query": query})), false)
+            .await
+        else {
+            return Vec::new();
+        };
+        let ids: Vec<u64> = array(&res["workItems"])
+            .iter()
+            .map(id)
+            .filter(|w| *w > 0)
+            .take(160)
+            .collect();
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        let Ok(fetched) = self.items(&ids, false, Some(&SEARCH_FIELDS)).await else {
+            return Vec::new();
+        };
+        let mut pool: Vec<Value> = fetched.iter().map(|wi| self.map_search_item(wi)).collect();
+        pool.sort_by(|a, b| recency_ts(b).cmp(recency_ts(a)));
+        *self.team_pool.lock().unwrap() = Some((Instant::now(), pool.clone()));
+        pool
+    }
+
+    async fn search(&self, query_str: &str) -> Result<Value> {
+        let mut q = String::new();
+        for (k, v) in url::form_urlencoded::parse(query_str.as_bytes()) {
+            if k == "q" {
+                q = v.trim().to_owned();
+            }
+        }
+        let parsed_id = parse_search_ticket_id(&q);
+        let words: Vec<String> = q
+            .to_lowercase()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+
+        if q.is_empty() {
+            let pool = self.get_team_pool().await;
+            let items: Vec<Value> = pool.into_iter().take(50).collect();
+            return Ok(json!({"items": items}));
+        }
+
+        // Run Stand Up team pool lookup and SAN SA almsearch/ID lookup in parallel
+        let remote_fut = async {
+            let mut ids: Vec<u64> = Vec::new();
+            if let Some(pid) = parsed_id {
+                ids.push(pid);
+            }
+            if parsed_id.is_none_or(|pid| pid < 1_000_000) {
+                let search_text = parsed_id.map(|pid| pid.to_string()).unwrap_or_else(|| q.clone());
+                let search_body = json!({
+                    "searchText": search_text,
+                    "$skip": 0,
+                    "$top": 35,
+                    "filters": {
+                        "System.TeamProject": [self.ado.project()]
+                    }
+                });
+                if let Ok(res) = self
+                    .ado
+                    .request_json("POST", &self.ado.almsearch_url(), Some(search_body), false)
+                    .await
+                {
+                    for hit in array(&res["results"]).iter().take(35) {
+                        let wid = hit["fields"]["system.id"]
+                            .as_str()
+                            .and_then(|s| s.parse::<u64>().ok())
+                            .or_else(|| hit["fields"]["system.id"].as_u64())
+                            .unwrap_or(0);
+                        if wid > 0 && !ids.contains(&wid) {
+                            ids.push(wid);
+                        }
+                    }
+                }
+            }
+            if ids.is_empty() {
+                return Vec::new();
+            }
+            match self.items(&ids, false, Some(&SEARCH_FIELDS)).await {
+                Ok(fetched) => fetched.iter().map(|wi| self.map_search_item(wi)).collect(),
+                Err(_) => Vec::new(),
+            }
+        };
+
+        let (team_pool, remote_items) = tokio::join!(self.get_team_pool(), remote_fut);
+
+        let mut seen = HashSet::new();
+        let mut team_hits: Vec<Value> = Vec::new();
+        let mut other_hits: Vec<Value> = Vec::new();
+
+        for item in team_pool {
+            if matches_search_words(&item, &words, parsed_id) {
+                let wid = id(&item);
+                if wid > 0 && seen.insert(wid) {
+                    team_hits.push(item);
+                }
+            }
+        }
+        for item in remote_items {
+            let wid = id(&item);
+            if wid == 0 || !seen.insert(wid) {
+                continue;
+            }
+            if item["isTeamMember"].as_bool().unwrap_or(false) {
+                team_hits.push(item);
+            } else {
+                other_hits.push(item);
+            }
+        }
+
+        // Sort Stand Up team tickets by recency (most recently modified or created first; exact ID match on top)
+        team_hits.sort_by(|a, b| {
+            let a_exact = parsed_id.is_some_and(|pid| id(a) == pid);
+            let b_exact = parsed_id.is_some_and(|pid| id(b) == pid);
+            b_exact
+                .cmp(&a_exact)
+                .then_with(|| recency_ts(b).cmp(recency_ts(a)))
+        });
+
+        // Sort other SAN SA tickets by recency (exact ID match on top)
+        other_hits.sort_by(|a, b| {
+            let a_exact = parsed_id.is_some_and(|pid| id(a) == pid);
+            let b_exact = parsed_id.is_some_and(|pid| id(b) == pid);
+            b_exact
+                .cmp(&a_exact)
+                .then_with(|| recency_ts(b).cmp(recency_ts(a)))
+        });
+
+        let mut items: Vec<Value> = Vec::with_capacity(team_hits.len() + other_hits.len());
+        // If user typed an exact ID of a non-team ticket, keep that exact ticket at index 0
+        if let Some(pid) = parsed_id {
+            if let Some(pos) = other_hits.iter().position(|it| id(it) == pid) {
+                items.push(other_hits.remove(pos));
+            }
+        }
+        items.extend(team_hits.into_iter().take(40));
+        items.extend(other_hits.into_iter().take(30));
+
+        Ok(json!({"items": items}))
+    }
+
     async fn ancestors(&self, wi: &Value) -> Result<Vec<Value>> {
         self.remember_node(wi);
         let mut result = Vec::new();
@@ -783,42 +1077,138 @@ impl PlannerService {
         map_pr(pr, self.ado.org(), self.ado.project())
     }
 
-    async fn pull_requests(&self, wi: &Value) -> Vec<Value> {
-        let mut tasks = Vec::new();
-        for relation in array(&wi["relations"])
-            .iter()
-            .filter(|r| r["rel"] == "ArtifactLink")
-        {
-            let artifact = text(&relation["url"]);
-            let Some(parts) = PR_ARTIFACT.captures(artifact) else {
-                continue;
-            };
-            let path = format!(
-                "/{}/_apis/git/repositories/{}/pullrequests/{}?api-version=7.1",
-                enc(&parts[1]),
-                enc(&parts[2]),
-                &parts[3]
-            );
-            let pr_id = parts[3].parse::<u64>().unwrap();
-            tasks.push(async move {
-                match self.ado.get(&path).await {
-                    Ok(pr) => {
-                        let mut v = self.pr(&pr);
-                        v["artifact"] = json!(artifact);
-                        v
-                    }
-                    Err(error) => json!({
-                        "id":pr_id,
-                        "artifact":artifact,
-                        "error":if error.status == 404 {
-                            "Not found or no access".to_owned()
-                        } else {
-                            error.error
-                        }
-                    }),
-                }
-            });
+    async fn fetch_github_pr(
+        &self,
+        host: &str,
+        owner: &str,
+        repo: &str,
+        pr_id: u64,
+    ) -> Option<Value> {
+        let mut cmd = tokio::process::Command::new("gh");
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        if !host.eq_ignore_ascii_case("github.com") {
+            cmd.env_remove("GH_TOKEN");
+            cmd.env_remove("GITHUB_TOKEN");
         }
+        cmd.args([
+            "api",
+            "--hostname",
+            host,
+            &format!("repos/{owner}/{repo}/pulls/{pr_id}"),
+        ]);
+        let output = tokio::time::timeout(std::time::Duration::from_secs(5), cmd.output())
+            .await
+            .ok()?
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        serde_json::from_slice::<Value>(&output.stdout).ok()
+    }
+
+    async fn pull_requests(&self, wi: &Value) -> Vec<Value> {
+        enum PrTask {
+            Ado {
+                artifact: String,
+                path: String,
+                pr_id: u64,
+            },
+            GitHub {
+                host: String,
+                owner: String,
+                repo: String,
+                pr_id: u64,
+                canonical_url: String,
+                comment: Option<String>,
+            },
+        }
+
+        let mut specs = Vec::new();
+        for relation in array(&wi["relations"]) {
+            let rel = text(&relation["rel"]);
+            let url_str = text(&relation["url"]);
+            if rel == "ArtifactLink" {
+                if let Some(parts) = PR_ARTIFACT.captures(url_str) {
+                    let path = format!(
+                        "/{}/_apis/git/repositories/{}/pullrequests/{}?api-version=7.1",
+                        enc(&parts[1]),
+                        enc(&parts[2]),
+                        &parts[3]
+                    );
+                    if let Ok(pr_id) = parts[3].parse::<u64>() {
+                        specs.push(PrTask::Ado {
+                            artifact: url_str.to_owned(),
+                            path,
+                            pr_id,
+                        });
+                    }
+                }
+            } else if rel == "Hyperlink" {
+                if let Some((host, owner, repo, pr_id, canonical_url)) =
+                    parse_github_pr_url(url_str)
+                {
+                    let comment = relation["attributes"]["comment"]
+                        .as_str()
+                        .map(str::to_owned);
+                    specs.push(PrTask::GitHub {
+                        host,
+                        owner,
+                        repo,
+                        pr_id,
+                        canonical_url,
+                        comment,
+                    });
+                }
+            }
+        }
+
+        let tasks: Vec<_> = specs
+            .into_iter()
+            .map(|spec| async move {
+                match spec {
+                    PrTask::Ado {
+                        artifact,
+                        path,
+                        pr_id,
+                    } => match self.ado.get(&path).await {
+                        Ok(pr) => {
+                            let mut v = self.pr(&pr);
+                            v["artifact"] = json!(artifact);
+                            v
+                        }
+                        Err(error) => json!({
+                            "id": pr_id,
+                            "artifact": artifact,
+                            "error": if error.status == 404 {
+                                "Not found or no access".to_owned()
+                            } else {
+                                error.error
+                            }
+                        }),
+                    },
+                    PrTask::GitHub {
+                        host,
+                        owner,
+                        repo,
+                        pr_id,
+                        canonical_url,
+                        comment,
+                    } => {
+                        let gh = self.fetch_github_pr(&host, &owner, &repo, pr_id).await;
+                        map_github_pr(
+                            gh.as_ref(),
+                            &owner,
+                            &repo,
+                            pr_id,
+                            &canonical_url,
+                            comment.as_deref(),
+                        )
+                    }
+                }
+            })
+            .collect();
+
         let mut prs = join_all(tasks).await;
         sort_pull_requests(&mut prs);
         prs
@@ -1020,43 +1410,82 @@ impl PlannerService {
     }
 
     async fn link_pr(&self, id: u64, body: &Value) -> Result<Value> {
-        let (project, pr_id) = parse_pr_ref(required(body, "ref")?, self.ado.project())?;
-        let pr = self
-            .ado
-            .get(&format!(
-                "/{}/_apis/git/pullrequests/{pr_id}?api-version=7.1",
-                enc(&project)
-            ))
-            .await?;
-        let repo = &pr["repository"];
-        let project_id = required(&repo["project"], "id")?;
-        let repo_id = required(repo, "id")?;
-        let artifact = format!("vstfs:///Git/PullRequestId/{project_id}%2F{repo_id}%2F{pr_id}");
-        let wi = self.ado.workitem(id).await?;
-        if array(&wi["relations"])
-            .iter()
-            .any(|r| r["rel"] == "ArtifactLink" && text(&r["url"]).eq_ignore_ascii_case(&artifact))
-        {
-            return Err(Error::new(409, format!("PR {pr_id} is already linked")));
+        match parse_pr_ref(required(body, "ref")?, self.ado.project())? {
+            PrRef::Ado { project, pr_id } => {
+                let pr = self
+                    .ado
+                    .get(&format!(
+                        "/{}/_apis/git/pullrequests/{pr_id}?api-version=7.1",
+                        enc(&project)
+                    ))
+                    .await?;
+                let repo = &pr["repository"];
+                let project_id = required(&repo["project"], "id")?;
+                let repo_id = required(repo, "id")?;
+                let artifact =
+                    format!("vstfs:///Git/PullRequestId/{project_id}%2F{repo_id}%2F{pr_id}");
+                let wi = self.ado.workitem(id).await?;
+                if array(&wi["relations"]).iter().any(|r| {
+                    r["rel"] == "ArtifactLink" && text(&r["url"]).eq_ignore_ascii_case(&artifact)
+                }) {
+                    return Err(Error::new(409, format!("PR {pr_id} is already linked")));
+                }
+                let mut ops = Vec::new();
+                test_revision(&mut ops, &wi["rev"]);
+                add(
+                    &mut ops,
+                    "/relations/-",
+                    json!({"rel":"ArtifactLink","url":artifact,"attributes":{"name":"Pull Request"}}),
+                );
+                let updated = self.ado.patch_workitem(id, ops).await?;
+                let mut mapped = self.pr(&pr);
+                mapped["artifact"] = json!(artifact);
+                Ok(json!({"rev":updated["rev"],"pullRequest":mapped}))
+            }
+            PrRef::GitHub {
+                host,
+                owner,
+                repo,
+                pr_id,
+                url,
+            } => {
+                let wi = self.ado.workitem(id).await?;
+                if array(&wi["relations"]).iter().any(|r| {
+                    r["rel"] == "Hyperlink" && text(&r["url"]).eq_ignore_ascii_case(&url)
+                }) {
+                    return Err(Error::new(
+                        409,
+                        format!("GitHub PR #{pr_id} is already linked"),
+                    ));
+                }
+                let gh = self.fetch_github_pr(&host, &owner, &repo, pr_id).await;
+                let mapped = map_github_pr(gh.as_ref(), &owner, &repo, pr_id, &url, None);
+                let comment_title: String = text(&mapped["title"]).chars().take(240).collect();
+                let mut ops = Vec::new();
+                test_revision(&mut ops, &wi["rev"]);
+                add(
+                    &mut ops,
+                    "/relations/-",
+                    json!({
+                        "rel": "Hyperlink",
+                        "url": url,
+                        "attributes": {
+                            "comment": comment_title
+                        }
+                    }),
+                );
+                let updated = self.ado.patch_workitem(id, ops).await?;
+                Ok(json!({"rev":updated["rev"],"pullRequest":mapped}))
+            }
         }
-        let mut ops = Vec::new();
-        test_revision(&mut ops, &wi["rev"]);
-        add(
-            &mut ops,
-            "/relations/-",
-            json!({"rel":"ArtifactLink","url":artifact,"attributes":{"name":"Pull Request"}}),
-        );
-        let updated = self.ado.patch_workitem(id, ops).await?;
-        let mut mapped = self.pr(&pr);
-        mapped["artifact"] = json!(artifact);
-        Ok(json!({"rev":updated["rev"],"pullRequest":mapped}))
     }
 
     async fn unlink_pr(&self, id: u64, body: &Value) -> Result<Value> {
         let artifact = required(body, "artifact")?;
         let wi = self.ado.workitem(id).await?;
         let Some(index) = array(&wi["relations"]).iter().position(|r| {
-            r["rel"] == "ArtifactLink" && text(&r["url"]).eq_ignore_ascii_case(artifact)
+            matches!(text(&r["rel"]), "ArtifactLink" | "Hyperlink")
+                && text(&r["url"]).eq_ignore_ascii_case(artifact)
         }) else {
             return Ok(json!({"rev":wi["rev"],"unchanged":true}));
         };
@@ -1138,6 +1567,7 @@ impl PlannerService {
             ("GET", ["auth", "device"]) => Ok(self.ado.auth().poll_device().await),
             ("GET", ["overview"]) => self.overview().await,
             ("GET", ["standup"]) => self.standup(query_part).await,
+            ("GET", ["search"]) => self.search(query_part).await,
             ("GET", ["settings"]) => Ok(self.settings(None).await),
             ("PATCH", ["settings"]) => self.save_settings(&body).await,
             ("GET", ["sprints"]) => self.sprints().await,
@@ -1617,5 +2047,18 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.status, 400);
+    }
+
+    #[test]
+    fn parse_search_ticket_id_handles_numbers_hashes_ab_prefix_and_urls() {
+        assert_eq!(parse_search_ticket_id("11254816"), Some(11254816));
+        assert_eq!(parse_search_ticket_id("#11254816"), Some(11254816));
+        assert_eq!(parse_search_ticket_id("AB#11254816"), Some(11254816));
+        assert_eq!(parse_search_ticket_id("ab#11254816"), Some(11254816));
+        assert_eq!(
+            parse_search_ticket_id("https://msasg.visualstudio.com/SAN%20SA/_workitems/edit/11254816"),
+            Some(11254816)
+        );
+        assert_eq!(parse_search_ticket_id("android crash"), None);
     }
 }

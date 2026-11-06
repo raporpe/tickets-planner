@@ -551,6 +551,16 @@ class MockStore {
     return structuredClone(this._overview);
   }
 
+  search(q) {
+    const standup = this.standup(null, 'SAN SA\\Sprint\\2026.02');
+    const all = [...this._overview.items, ...standup.items];
+    const query = String(q || '').trim().toLowerCase();
+    const filtered = !query
+      ? all
+      : all.filter((i) => String(i.id).includes(query) || i.title.toLowerCase().includes(query) || (i.assignedTo?.name || '').toLowerCase().includes(query));
+    return { items: structuredClone(filtered.slice(0, 30)) };
+  }
+
   standup(_users, sprintPath) {
     const sp = sprintPath || 'SAN SA\\Sprint\\2026.02';
     const teamAssignees = [

@@ -110,6 +110,18 @@ impl AdoClient {
         )
     }
 
+    pub fn almsearch_url(&self) -> String {
+        let base = if self.org.eq_ignore_ascii_case("https://msasg.visualstudio.com") {
+            "https://almsearch.dev.azure.com/msasg".to_owned()
+        } else {
+            self.org.clone()
+        };
+        format!(
+            "{base}/{}/_apis/search/workitemsearchresults?api-version=7.1",
+            self.project_encoded()
+        )
+    }
+
     pub async fn request_json(
         &self,
         method: &str,

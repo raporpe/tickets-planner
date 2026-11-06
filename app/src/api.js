@@ -32,6 +32,10 @@ export const api = {
     mockStore.isEnabled()
       ? Promise.resolve(mockStore.standup(null, sprintPath))
       : request('GET', `/standup?sprint=${encodeURIComponent(sprintPath || '')}`),
+  search: (q) =>
+    mockStore.isEnabled()
+      ? Promise.resolve(mockStore.search(q))
+      : request('GET', `/search?q=${encodeURIComponent(q || '')}`),
   settings: () => (mockStore.isEnabled() ? Promise.resolve({}) : request('GET', '/settings')),
   saveSettings: (patch) => (mockStore.isEnabled() ? Promise.resolve(patch) : request('PATCH', '/settings', patch)),
   update: (id, patch) => (mockStore.isEnabled() ? Promise.resolve(mockStore.update(id, patch)) : request('PATCH', `/workitems/${id}`, patch)),

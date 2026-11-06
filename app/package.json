@@ -1,7 +1,7 @@
 {
   "name": "tickets-planner",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "Local web UI to review Azure DevOps tickets and plan sprints",
   "scripts": {

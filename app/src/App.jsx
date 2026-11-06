@@ -14,6 +14,7 @@ import { StandUpView } from '@/components/standup-view';
 import { FeaturesView } from '@/components/features-view';
 import { AttentionView } from '@/components/attention-view';
 import { clearDetailCache, ItemDetail, prefetchDetail } from '@/components/item-detail';
+import { TicketContextMenu } from '@/components/ticket-context-menu';
 import { TicketSearch } from '@/components/ticket-search';
 import { clearAncestors } from '@/components/hierarchy';
 import { DetailContext } from '@/lib/detail';
@@ -23,7 +24,7 @@ import { isTyping, overlayOpen, queueAction, runAction, TICKET_ACTIONS } from '@
 import { ShortcutsHelp, VersionDialog } from '@/components/shortcuts-help';
 import { setTheme, useTheme } from '@/lib/theme';
 import { workspaceState } from '@/lib/workspace-state';
-import { openExternal } from '@/lib/desktop';
+import { openExternal, writeClipboard } from '@/lib/desktop';
 import { mockStore } from '@/lib/mock-data';
 
 function ThemeToggle() {
@@ -44,6 +45,7 @@ function ThemeToggle() {
 function describe(patch, data, features) {
   if (patch.state) return `state → ${patch.state}`;
   if (patch.priority != null) return `priority → P${patch.priority}`;
+  if (patch.tags) return 'tags updated';
   if (patch.iterationPath) {
     const s = data.sprints.find((x) => x.path === patch.iterationPath);
     return `moved to ${s ? s.name : 'Backlog'}`;
@@ -381,8 +383,40 @@ export default function App() {
         });
       })
       .catch(() => {});
+
+    // Check every 4 hours while the app remains open and notify the user at the bottom.
+    const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      api
+        .checkUpdate()
+        .then((u) => {
+          if (cancelled || !u?.available) return;
+          toast.info(`Update v${u.version} is available`, {
+            id: 'periodic-update-notice',
+            duration: Infinity,
+            description: 'To install it, close and reopen the application.',
+            action: {
+              label: 'Install now',
+              onClick: () => {
+                const tid = toast.loading(`Updating Tickets planner to v${u.version}…`, {
+                  description: 'Downloading signed release and restarting…',
+                });
+                api.installUpdate().catch((e) => {
+                  toast.error(`Update to v${u.version} failed`, {
+                    id: tid,
+                    description: e?.error || e?.message || String(e),
+                  });
+                });
+              },
+            },
+          });
+        })
+        .catch(() => {});
+    }, FOUR_HOURS_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
     };
   }, []);
   useEffect(() => {
@@ -443,6 +477,12 @@ export default function App() {
     if (!target) return toast.message('Hover a ticket or open one first');
     const { id, scope } = target;
     const d = dataRef.current;
+    if (action === 'copy-ab') {
+      return writeClipboard(`AB#${id}`).then(
+        () => toast.success(`Copied AB#${id}`),
+        () => toast.error('Could not copy to the clipboard'),
+      );
+    }
     if (action === 'copy' || action === 'open-ado') {
       const item = d?.items.find((i) => i.id === id) || d?.features.find((f) => f.id === id);
       if (action === 'open-ado') return openExternal(item?.url || `https://msasg.visualstudio.com/SAN%20SA/_workitems/edit/${id}`).catch(
@@ -477,7 +517,7 @@ export default function App() {
 
   useEffect(() => {
     let gAt = 0;
-    const keys = { s: 'state', p: 'priority', f: 'feature', l: 'link-pr', m: 'comment', e: 'edit', o: 'open-ado', c: 'copy' };
+    const keys = { s: 'state', p: 'priority', f: 'feature', l: 'link-pr', m: 'comment', e: 'edit', o: 'open-ado', c: 'copy', b: 'copy-ab' };
     const onKey = (e) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || isTyping(e) || overlayOpen() || helpRef.current) return;
       const k = e.key.toLowerCase();
@@ -532,7 +572,16 @@ export default function App() {
           await load();
         } else {
           const merge = (i) =>
-            i.id === item.id ? { ...i, state: r.state, priority: r.priority ?? i.priority, iterationPath: r.iterationPath } : i;
+            i.id === item.id
+              ? {
+                  ...i,
+                  state: r.state ?? i.state,
+                  priority: r.priority ?? i.priority,
+                  iterationPath: r.iterationPath ?? i.iterationPath,
+                  tags: r.tags ?? i.tags,
+                  weeksCarried: (r.tags ?? i.tags ?? []).filter((t) => /^\d{8}$/.test(t)).length,
+                }
+              : i;
           setData((d) => ({ ...d, items: d.items.map(merge) }));
           setStandup((s) => ({ ...s, items: s.items.map(merge) }));
         }
@@ -776,6 +825,14 @@ export default function App() {
           onUpdate={onUpdate}
           onItemPatched={onItemPatched}
           onClose={() => setDetailId(null)}
+        />
+      )}
+      {detailData && (
+        <TicketContextMenu
+          data={detailData}
+          onAction={doAction}
+          onUpdate={onUpdate}
+          onOpenDetail={setDetailId}
         />
       )}
       <ShortcutsHelp open={shortcutsOpen} onOpenChange={setShortcutsOpen} />

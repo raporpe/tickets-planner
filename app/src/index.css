@@ -312,3 +312,41 @@
 @utility animate-shuffle-spin {
   animation: shuffle-spin 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+@keyframes timer-ring {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  15% {
+    transform: rotate(-18deg) scale(1.12);
+  }
+  30% {
+    transform: rotate(18deg) scale(1.12);
+  }
+  45% {
+    transform: rotate(-14deg) scale(1.08);
+  }
+  60% {
+    transform: rotate(14deg) scale(1.08);
+  }
+  75% {
+    transform: rotate(-6deg) scale(1.03);
+  }
+}
+
+@keyframes timer-overtime {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@utility animate-timer-ring {
+  animation: timer-ring 750ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@utility animate-timer-overtime {
+  animation: timer-overtime 900ms ease-in-out infinite;
+}

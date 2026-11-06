@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Circle, CircleCheckBig, Clock, Flame, KanbanSquare, Layers, LayoutGrid, PieChart, Shuffle } from 'lucide-react';
+import { Circle, CircleCheckBig, Clock, Flame, KanbanSquare, Layers, LayoutGrid, PieChart, Shuffle, Square, Timer } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HierarchyHover } from '@/components/hierarchy';
@@ -51,6 +51,65 @@ function fetchAvatar(url) {
     });
   avatarInflight.set(url, p);
   return p;
+}
+
+function formatStandupTime(ms = 0) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function MemberTimerBadge({ ms = 0, isSpeaking }) {
+  const sec = ms / 1000;
+  const overTarget = sec >= 90;
+  const overLimit = sec >= 100;
+
+  let colorStyle;
+  if (sec >= 100) {
+    colorStyle = { color: 'var(--destructive)' };
+  } else if (sec >= 90) {
+    // Progressive ramp from warm orange-red at 1:30 (90s) to full intense red at 1:40 (100s)
+    const pct = Math.min(100, Math.max(0, Math.round(((sec - 90) / 10) * 100)));
+    colorStyle = {
+      color: `color-mix(in oklch, oklch(0.66 0.17 52) ${100 - pct}%, var(--destructive) ${pct}%)`,
+    };
+  } else if (sec >= 75) {
+    // Gentle warm-up approaching 1:30 (75s -> 90s)
+    const pct = Math.min(100, Math.max(0, Math.round(((sec - 75) / 15) * 100)));
+    colorStyle = {
+      color: `color-mix(in oklch, var(--muted-foreground) ${100 - pct}%, oklch(0.68 0.16 65) ${pct}%)`,
+    };
+  }
+
+  return (
+    <span
+      style={colorStyle}
+      className={cn(
+        'inline-flex items-center gap-1 font-mono text-[10px] leading-none tabular-nums transition-colors',
+        overLimit
+          ? 'animate-timer-overtime font-bold motion-reduce:animate-none'
+          : overTarget
+            ? 'font-semibold'
+            : isSpeaking
+              ? 'font-medium text-foreground/85'
+              : 'text-muted-foreground',
+      )}
+    >
+      <Timer
+        className={cn(
+          'size-2.5 shrink-0',
+          overTarget && isSpeaking && 'animate-timer-ring motion-reduce:animate-none',
+        )}
+      />
+      <span>{formatStandupTime(ms)}</span>
+      {overLimit && isSpeaking && (
+        <span className="rounded bg-destructive/15 px-1 py-px font-sans text-[9px] font-semibold tracking-tight text-destructive">
+          Wrap up
+        </span>
+      )}
+    </span>
+  );
 }
 
 function TabCurveEars() {
@@ -1061,6 +1120,8 @@ export function StandUpView({
   const [layoutMode, setLayoutMode] = useState('kanban');
   const [draggingId, setDraggingId] = useState(null);
   const [overCol, setOverCol] = useState(null);
+  const [timerActive, setTimerActive] = useState(false);
+  const [memberTimes, setMemberTimes] = useState({});
 
   const isStatsSelected = selectedId === STATS_TAB_ID;
   const selectedMember = useMemo(
@@ -1071,6 +1132,38 @@ export function StandUpView({
     () => (data?.sprints || []).find((s) => s.path === sprintPath) || null,
     [data?.sprints, sprintPath],
   );
+
+  // Per-person Stand Up stopwatch: ticks for whichever person tab is currently selected.
+  const activeSpeakerId = isStatsSelected ? null : selectedMember?.id;
+  useEffect(() => {
+    if (!timerActive || !active || !activeSpeakerId) return undefined;
+    let last = performance.now();
+    const id = setInterval(() => {
+      const now = performance.now();
+      const dt = Math.max(0, now - last);
+      last = now;
+      setMemberTimes((prev) => ({
+        ...prev,
+        [activeSpeakerId]: (prev[activeSpeakerId] || 0) + dt,
+      }));
+    }, 100);
+    return () => clearInterval(id);
+  }, [timerActive, active, activeSpeakerId]);
+
+  const totalTimerMs = useMemo(
+    () => Object.values(memberTimes).reduce((acc, v) => acc + v, 0),
+    [memberTimes],
+  );
+
+  function toggleTimer() {
+    if (timerActive) {
+      setTimerActive(false);
+      setMemberTimes({});
+    } else {
+      setMemberTimes({});
+      setTimerActive(true);
+    }
+  }
 
   function shuffleTeam() {
     const tops = new Map();
@@ -1240,11 +1333,18 @@ export function StandUpView({
               <MemberAvatar member={m} selected={isSelected} size="size-7" />
               <div className="min-w-0 flex-1">
                 <span className="block truncate text-xs leading-tight">{m.name}</span>
-                {unplanned > 0 && (
-                  <span className="mt-0.5 flex items-center gap-1 text-[10px] leading-none font-medium text-amber-700 tabular-nums dark:text-amber-300">
-                    <Flame className="size-2.5 shrink-0 fill-current text-amber-600 dark:text-amber-300" />
-                    {unplanned} unplanned
-                  </span>
+                {(timerActive || unplanned > 0) && (
+                  <div className="mt-0.5 flex items-center gap-2 leading-none">
+                    {timerActive && (
+                      <MemberTimerBadge ms={memberTimes[m.id] || 0} isSpeaking={isSelected} />
+                    )}
+                    {unplanned > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] leading-none font-medium text-amber-700 tabular-nums dark:text-amber-300">
+                        <Flame className="size-2.5 shrink-0 fill-current text-amber-600 dark:text-amber-300" />
+                        {timerActive ? unplanned : `${unplanned} unplanned`}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             </button>
@@ -1285,17 +1385,43 @@ export function StandUpView({
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={shuffleTeam}
-          title="Shuffle speaker order"
-          className="group/shuf relative z-10 mt-auto mr-2 ml-1 inline-flex h-8 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-border/70 bg-background/60 px-3 text-xs font-medium text-muted-foreground transition-[color,background-color,border-color,transform] duration-150 hover:border-foreground/25 hover:bg-background hover:text-foreground active:scale-95 focus-visible:outline-none"
-        >
-          <span key={shuffleTick} className={cn('inline-flex', shuffleTick > 0 && 'animate-shuffle-spin motion-reduce:animate-none')}>
-            <Shuffle className="size-3.5 transition-transform duration-200 group-hover/shuf:rotate-12" />
-          </span>
-          <span>Shuffle</span>
-        </button>
+        <div className="mt-auto mr-2 ml-1 flex flex-col gap-1.5 pt-2">
+          <button
+            type="button"
+            onClick={toggleTimer}
+            title={timerActive ? 'Stop Stand Up timer' : 'Start per-person Stand Up timer (1:30 target)'}
+            className={cn(
+              'relative z-10 inline-flex h-8 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-colors active:scale-95 focus-visible:outline-none',
+              timerActive
+                ? 'border-rose-300 bg-rose-50/90 text-rose-900 hover:bg-rose-100/90 dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-200'
+                : 'border-border/70 bg-background/60 text-muted-foreground hover:border-foreground/25 hover:bg-background hover:text-foreground',
+            )}
+          >
+            {timerActive ? (
+              <>
+                <Square className="size-3 fill-current text-rose-600 dark:text-rose-400" />
+                <span className="font-mono tabular-nums">Stop · {formatStandupTime(totalTimerMs)}</span>
+              </>
+            ) : (
+              <>
+                <Timer className="size-3.5" />
+                <span>Start timer</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={shuffleTeam}
+            title="Shuffle speaker order"
+            className="group/shuf relative z-10 inline-flex h-8 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-border/70 bg-background/60 px-3 text-xs font-medium text-muted-foreground transition-[color,background-color,border-color,transform] duration-150 hover:border-foreground/25 hover:bg-background hover:text-foreground active:scale-95 focus-visible:outline-none"
+          >
+            <span key={shuffleTick} className={cn('inline-flex', shuffleTick > 0 && 'animate-shuffle-spin motion-reduce:animate-none')}>
+              <Shuffle className="size-3.5 transition-transform duration-200 group-hover/shuf:rotate-12" />
+            </span>
+            <span>Shuffle</span>
+          </button>
+        </div>
       </nav>
 
       {/* Active person or stats tab enclosure */}

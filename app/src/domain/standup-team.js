@@ -111,6 +111,24 @@ export function matchTeamMember(item, member) {
   return member.aliases.some((a) => a.toLowerCase() === email);
 }
 
+export function resolveTeamMember(assignedTo) {
+  if (!assignedTo) return null;
+  const email = String(assignedTo.email || assignedTo.uniqueName || '').trim().toLowerCase();
+  if (email) {
+    const byEmail = STANDUP_TEAM.find((m) => m.aliases.some((a) => a.toLowerCase() === email));
+    if (byEmail) return byEmail;
+  }
+  const name = String(assignedTo.name || assignedTo.displayName || '').trim().toLowerCase();
+  if (name) {
+    return (
+      STANDUP_TEAM.find(
+        (m) => name.includes(m.name.toLowerCase()) || name.includes((m.fullName || m.name).toLowerCase()),
+      ) || null
+    );
+  }
+  return null;
+}
+
 export const STANDUP_COLUMNS = [
   { key: 'todo', label: 'To do', defaultState: 'New', hint: 'Planned for this sprint, not started yet' },
   { key: 'active', label: 'In progress', defaultState: 'Active', hint: 'Currently in progress or under review' },

@@ -14,6 +14,7 @@ export const TICKET_ACTIONS = [
   { id: 'edit', label: 'Edit description', keys: ['E'], detailOnly: true },
   { id: 'open-ado', label: 'Open in Azure DevOps', keys: ['O'] },
   { id: 'copy', label: 'Copy link, title and state', keys: ['C'] },
+  { id: 'copy-ab', label: 'Copy AB#id for GitHub', keys: ['B'] },
 ];
 
 export const NAV_ACTIONS = [
@@ -61,7 +62,7 @@ export function isTyping(e) {
 
 /** True while a picker, menu or palette is open; it owns the keyboard then. */
 export const overlayOpen = () =>
-  !!document.querySelector('[data-radix-popper-content-wrapper], [role="listbox"], [role="alertdialog"], [cmdk-root] input:focus');
+  !!document.querySelector('[data-radix-popper-content-wrapper], [role="listbox"], [role="menu"], [role="alertdialog"], [cmdk-root] input:focus');
 
 const EVENT = 'planner:action';
 

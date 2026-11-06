@@ -178,6 +178,7 @@ const PR_STATUS = {
 
 function PullRequestRow({ pr, who, onUnlink }) {
   const s = PR_STATUS[pr.status] || PR_STATUS.active;
+  const isGitHub = pr.provider === 'github' || /github\.com|ghe\.com/i.test(String(pr.url || ''));
   if (pr.error) {
     return (
       <li className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground">
@@ -189,6 +190,8 @@ function PullRequestRow({ pr, who, onUnlink }) {
       </li>
     );
   }
+  const hasDates = !!(pr.closed || pr.created);
+  const authorLabel = who(pr.author);
   return (
     <li className="group flex items-start gap-2.5 rounded-md px-2 py-1.5 hover:bg-accent/60">
       <s.Icon className={cn('mt-0.5 size-4 shrink-0', s.tone)} aria-hidden />
@@ -197,13 +200,22 @@ function PullRequestRow({ pr, who, onUnlink }) {
           <a href={pr.url} target="_blank" rel="noreferrer" className="min-w-0 truncate text-[13px] font-medium hover:text-primary hover:underline">
             {pr.title}
           </a>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">!{pr.id}</span>
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {isGitHub ? `#${pr.id}` : `!${pr.id}`}
+          </span>
         </div>
-        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={`${pr.source} → ${pr.target}`}>
-          <span title={fullDate(pr.closed || pr.created)}>
-            {pr.closed ? `${pr.status === 'completed' ? 'Merged' : 'Closed'} ${ago(pr.closed)}` : `Opened ${ago(pr.created)}`}
-          </span>{' '}
-          by {who(pr.author)} · {pr.repo} → {pr.target}
+        <div className="mt-0.5 truncate text-xs text-muted-foreground" title={pr.source ? `${pr.source} → ${pr.target}` : pr.repo}>
+          {hasDates && (
+            <>
+              <span title={fullDate(pr.closed || pr.created)}>
+                {pr.closed ? `${pr.status === 'completed' ? 'Merged' : 'Closed'} ${ago(pr.closed)}` : `Opened ${ago(pr.created)}`}
+              </span>
+              {authorLabel ? ` by ${authorLabel} · ` : ' · '}
+            </>
+          )}
+          {!hasDates && authorLabel && <>by {authorLabel} · </>}
+          {pr.repo}
+          {pr.target ? ` → ${pr.target}` : ''}
         </div>
       </div>
       <span className={cn('mt-px inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium', s.pill)}>{s.label}</span>
@@ -273,7 +285,7 @@ function PullRequests({ id, prs, who, onLink, onUnlink, onEditingChange }) {
               setError(null);
             }
           }}
-          placeholder={prs.length ? 'Paste another PR link and press Enter' : 'No linked PRs yet. Paste a PR link and press Enter'}
+          placeholder={prs.length ? 'Paste a GitHub or ADO PR link and press Enter' : 'No linked PRs yet. Paste a GitHub or ADO PR link and press Enter'}
           aria-label="Link a pull request by URL or number"
           aria-invalid={!!error}
           aria-describedby={error ? 'pr-link-error' : undefined}
@@ -605,7 +617,7 @@ function fetchCommentAvatar(url) {
   return p;
 }
 
-function CommentAvatar({ user, mine }) {
+export function CommentAvatar({ user, mine, size = 'size-7', className }) {
   const url = resolveUserAvatarUrl(user);
   const [src, setSrc] = useState(() => (url && commentAvatarCache.get(url)) || null);
 
@@ -638,7 +650,7 @@ function CommentAvatar({ user, mine }) {
       <img
         src={src}
         alt=""
-        className="mt-0.5 size-7 shrink-0 rounded-full object-cover ring-1 ring-border/70"
+        className={cn(size, 'shrink-0 rounded-full object-cover ring-1 ring-border/70', className)}
       />
     );
   }
@@ -646,8 +658,10 @@ function CommentAvatar({ user, mine }) {
     <span
       aria-hidden
       className={cn(
-        'mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold',
+        'grid shrink-0 place-items-center rounded-full text-[10px] font-semibold',
+        size,
         mine ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground',
+        className,
       )}
     >
       {initials}
@@ -671,7 +685,7 @@ function Comment({ comment, mine, onSave, onEditingChange }) {
         recent && 'rounded-lg bg-sky-50/55 px-2.5 py-2 ring-1 ring-sky-200/70 ring-inset dark:bg-sky-400/[0.07] dark:ring-sky-400/20',
       )}
     >
-      <CommentAvatar user={comment.createdBy} mine={mine} />
+      <CommentAvatar user={comment.createdBy} mine={mine} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] font-medium">{comment.createdBy?.name}</span>
@@ -1354,8 +1368,19 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                   onOpen={(next) => requestLeave(() => openItem(next))}
                 />
                 <section aria-label="Details" className="flex flex-col gap-2">
-                  {(detail.createdDate || detail.changedDate) && (
-                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                  {(detail.assignedTo?.name || detail.createdDate || detail.changedDate) && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      {detail.assignedTo?.name && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 py-0.5 pr-2.5 pl-1 font-medium text-foreground">
+                          <CommentAvatar
+                            user={detail.assignedTo}
+                            mine={detail.assignedTo?.id === data?.me?.id}
+                            size="size-4"
+                          />
+                          <span>{detail.assignedTo.name}</span>
+                        </span>
+                      )}
+                      {detail.assignedTo?.name && (detail.createdDate || detail.changedDate) && <span aria-hidden>·</span>}
                       {detail.createdDate && (
                         <span title={fullDate(detail.createdDate)}>
                           Created {ago(detail.createdDate)}
@@ -1369,7 +1394,7 @@ export function ItemDetail({ id, data, features, pendingIds, onUpdate, onItemPat
                           {who(detail.changedBy) ? ` by ${who(detail.changedBy)}` : ''}
                         </span>
                       )}
-                    </p>
+                    </div>
                   )}
                   <dl>
                     <TagsEditor detail={detail} disabled={pending || savingTags} onSaveTags={(next) => saveTags(next)} />
