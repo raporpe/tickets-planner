@@ -20,6 +20,7 @@ import { WorkItemCard } from '@/components/work-item';
 import { HierarchyHover } from '@/components/hierarchy';
 import { useBoardLayout } from '@/lib/board-layout';
 import { useBoardNotes } from '@/lib/board-notes';
+import { useSmoothBoardZoom } from '@/lib/board-zoom';
 import { buildColumns, canBeInSprint, columnKeyOf, isDone } from '@/lib/planning';
 
 const CARD_W = 272;
@@ -223,9 +224,6 @@ function BoardNote({ id, note, left, top, zoom = 1, editing, onEdit, onChange, o
   );
 }
 
-const MIN_ZOOM = 0.45;
-const MAX_ZOOM = 1.6;
-const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 1000) / 1000));
 const ghostTransform = (x, y, z = 1) => `translate3d(${x}px, ${y}px, 0) scale(${z})`;
 
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
@@ -235,8 +233,6 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const [drag, setDrag] = useState(null);
   const [snapPreview, setSnapPreview] = useState(null);
   const [glide, setGlide] = useState(null);
-  const [zoom, setZoom] = useState(1);
-  const zoomRef = useRef(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sideOpen, setSideOpen] = useState(false);
   const [backlogOpen, setBacklogOpen] = useState(false);
@@ -284,55 +280,13 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const current = drawerCols.find((c) => c.sprint?.timeFrame === 'current');
   const drawerCount = drawerCols.reduce((n, c) => n + byCol.get(c.key).filter((i) => !isDone(i)).length, 0);
   const allCols = [backlog, next, later, ...drawerCols].filter(Boolean);
+  const { zoom, zoomRef, resetZoom } = useSmoothBoardZoom(board, next?.key);
 
   useEffect(() => {
     if (!board.current) return undefined;
     const ro = new ResizeObserver(([e]) => setBoardWidth(Math.round(e.contentRect.width)));
     ro.observe(board.current);
     return () => ro.disconnect();
-  }, [next?.key]);
-
-  // Trackpad two-finger swipe pans; trackpad pinch (ctrlKey) and physical mouse wheel zoom centered on cursor.
-  useEffect(() => {
-    const el = board.current;
-    if (!el) return undefined;
-    let trackpadPanUntil = 0;
-
-    const onWheel = (e) => {
-      const now = performance.now();
-      const isPinch = e.ctrlKey || e.metaKey;
-      if (!isPinch) {
-        const looksLikeTrackpad =
-          Math.abs(e.deltaX) > 0 ||
-          (e.deltaMode === 0 && Math.abs(e.deltaY) < 50) ||
-          (typeof e.wheelDeltaY === 'number' && Math.abs(e.wheelDeltaY) % 120 !== 0);
-        if (looksLikeTrackpad || now < trackpadPanUntil) {
-          trackpadPanUntil = now + 220;
-          return; // allow native two-finger pan
-        }
-      }
-      e.preventDefault();
-      const oldZ = zoomRef.current;
-      const factor = isPinch ? Math.exp(-e.deltaY * 0.01) : Math.exp(-Math.sign(e.deltaY) * 0.1);
-      const newZ = clampZoom(oldZ * factor);
-      if (newZ === oldZ) return;
-
-      const r = el.getBoundingClientRect();
-      const vx = e.clientX - r.left;
-      const vy = e.clientY - r.top;
-      const wx = (el.scrollLeft + vx) / oldZ;
-      const wy = (el.scrollTop + vy) / oldZ;
-
-      zoomRef.current = newZ;
-      setZoom(newZ);
-      requestAnimationFrame(() => {
-        el.scrollLeft = Math.max(0, wx * newZ - vx);
-        el.scrollTop = Math.max(0, wy * newZ - vy);
-      });
-    };
-
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
   }, [next?.key]);
 
   useEffect(() => {
@@ -609,10 +563,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                     size="xs"
                     className="text-muted-foreground tabular-nums"
                     title="Reset zoom to 100%"
-                    onClick={() => {
-                      zoomRef.current = 1;
-                      setZoom(1);
-                    }}
+                    onClick={resetZoom}
                   >
                     {Math.round(zoom * 100)}%
                   </Button>

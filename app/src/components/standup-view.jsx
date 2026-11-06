@@ -1,14 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Circle, CircleCheckBig, Clock, Flame, KanbanSquare, Layers, LayoutGrid, Shuffle } from 'lucide-react';
+import { Circle, CircleCheckBig, Clock, Flame, KanbanSquare, Layers, LayoutGrid, PieChart, Shuffle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HierarchyHover } from '@/components/hierarchy';
-import { WorkItemCard } from '@/components/work-item';
+import { PriorityPill, WorkItemCard } from '@/components/work-item';
 import { api } from '@/api';
 import { isDesktop } from '@/lib/desktop';
 import { useDetail } from '@/lib/detail';
 import { useBoardLayout } from '@/lib/board-layout';
 import { useBoardNotes } from '@/lib/board-notes';
+import { useSmoothBoardZoom } from '@/lib/board-zoom';
 import { cn } from '@/lib/utils';
 import {
   attentionReasons,
@@ -17,6 +18,7 @@ import {
   isSprintUnplanned,
   matchesFilters,
   matchTeamMember,
+  PRIORITIES,
   STANDUP_COLUMNS,
   STANDUP_TEAM,
   standupColumnOf,
@@ -47,6 +49,27 @@ function fetchAvatar(url) {
     });
   avatarInflight.set(url, p);
   return p;
+}
+
+function TabCurveEars() {
+  return (
+    <>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 12 12"
+        className="pointer-events-none absolute -top-3 right-0 size-3"
+      >
+        <path d="M 12 0 L 12 12 L 0 12 A 12 12 0 0 0 12 0 Z" fill="var(--card)" />
+      </svg>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 12 12"
+        className="pointer-events-none absolute -bottom-3 right-0 size-3"
+      >
+        <path d="M 0 0 L 12 0 L 12 12 A 12 12 0 0 0 0 0 Z" fill="var(--card)" />
+      </svg>
+    </>
+  );
 }
 
 function MemberAvatar({ member, selected, size = 'size-6' }) {
@@ -165,11 +188,7 @@ function resolveMemberBoard(member, sprintPath, standupBoards, myLayout, myNotes
   return { layout: layoutItems, notes: noteItems, synced: true };
 }
 
-const MIN_ZOOM = 0.45;
-const MAX_ZOOM = 1.6;
-const clampZoom = (z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 1000) / 1000));
-
-function MemberWhiteboard({ member, items, sprintPath, data, features, pendingIds, onUpdate, standupBoards }) {
+function MemberWhiteboard({ member, items, sprintPath, data, features, pendingIds, reasonsById, onUpdate, standupBoards }) {
   const { layout: myLayout, place } = useBoardLayout();
   const { notes: myNotes } = useBoardNotes();
   const boardRef = useRef(null);
@@ -180,8 +199,7 @@ function MemberWhiteboard({ member, items, sprintPath, data, features, pendingId
   const [snapPreview, setSnapPreview] = useState(null);
   const [glide, setGlide] = useState(null);
   const [settleInfo, setSettleInfo] = useState({ id: null, count: 0 });
-  const [zoom, setZoom] = useState(1);
-  const zoomRef = useRef(1);
+  const { zoom, zoomRef } = useSmoothBoardZoom(boardRef, sprintPath);
 
   const isMe = useMemo(
     () => member.aliases.some((a) => a.toLowerCase() === String(data?.me?.email || 'raulpo@microsoft.com').toLowerCase()),
@@ -200,48 +218,6 @@ function MemberWhiteboard({ member, items, sprintPath, data, features, pendingId
     ro.observe(el);
     setViewW(el.clientWidth || 1100);
     return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const el = boardRef.current;
-    if (!el) return undefined;
-    let trackpadPanUntil = 0;
-
-    const onWheel = (e) => {
-      const now = performance.now();
-      const isPinch = e.ctrlKey || e.metaKey;
-      if (!isPinch) {
-        const looksLikeTrackpad =
-          Math.abs(e.deltaX) > 0 ||
-          (e.deltaMode === 0 && Math.abs(e.deltaY) < 50) ||
-          (typeof e.wheelDeltaY === 'number' && Math.abs(e.wheelDeltaY) % 120 !== 0);
-        if (looksLikeTrackpad || now < trackpadPanUntil) {
-          trackpadPanUntil = now + 220;
-          return;
-        }
-      }
-      e.preventDefault();
-      const oldZ = zoomRef.current;
-      const factor = isPinch ? Math.exp(-e.deltaY * 0.01) : Math.exp(-Math.sign(e.deltaY) * 0.1);
-      const newZ = clampZoom(oldZ * factor);
-      if (newZ === oldZ) return;
-
-      const r = el.getBoundingClientRect();
-      const vx = e.clientX - r.left;
-      const vy = e.clientY - r.top;
-      const wx = (el.scrollLeft + vx) / oldZ;
-      const wy = (el.scrollTop + vy) / oldZ;
-
-      zoomRef.current = newZ;
-      setZoom(newZ);
-      requestAnimationFrame(() => {
-        el.scrollLeft = Math.max(0, wx * newZ - vx);
-        el.scrollTop = Math.max(0, wy * newZ - vy);
-      });
-    };
-
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
   useLayoutEffect(() => {
@@ -467,7 +443,7 @@ function MemberWhiteboard({ member, items, sprintPath, data, features, pendingId
                         data={data}
                         features={features}
                         pending={pendingIds.has(item.id)}
-                        quiet
+                        reasons={reasonsById?.get(item.id)}
                         grabbable={isMe}
                         onUpdate={onUpdate}
                       />
@@ -507,7 +483,7 @@ function sortFeatureColumnItems(a, b) {
   return sortStandupItems(a, b);
 }
 
-function StandUpFeatureColumns({ items, data, features, featureById, pendingIds, onUpdate, memberName }) {
+function StandUpFeatureColumns({ items, data, features, featureById, pendingIds, reasonsById, onUpdate, memberName }) {
   const { openItem } = useDetail();
   const scrollRef = useRef(null);
 
@@ -627,13 +603,445 @@ function StandUpFeatureColumns({ items, data, features, featureById, pendingIds,
                 data={data}
                 features={features}
                 pending={pendingIds.has(item.id)}
-                quiet
+                reasons={reasonsById?.get(item.id)}
                 onUpdate={onUpdate}
               />
             ))}
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+const STATS_TAB_ID = '__stats__';
+
+function DonutChart({ slices, centerValue, centerLabel, ready = true, size = 132, strokeWidth = 20 }) {
+  const total = slices.reduce((acc, s) => acc + s.count, 0);
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let accumulated = 0;
+
+  return (
+    <div className="relative inline-flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-muted/70"
+        />
+        {total > 0 &&
+          slices
+            .filter((s) => s.count > 0)
+            .map((s) => {
+              const frac = s.count / total;
+              const len = ready ? frac * circumference : 0;
+              const offset = ready ? -accumulated * circumference : 0;
+              accumulated += frac;
+              return (
+                <circle
+                  key={s.key}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={radius}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={`${len} ${circumference}`}
+                  strokeDashoffset={offset}
+                  className="transition-[stroke-dasharray,stroke-dashoffset] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+                />
+              );
+            })}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="text-lg leading-none font-semibold tracking-tight text-foreground tabular-nums">{centerValue}</span>
+        {centerLabel && <span className="mt-1 text-[10.5px] leading-none text-muted-foreground">{centerLabel}</span>}
+      </div>
+    </div>
+  );
+}
+
+const PRIORITY_COLORS = {
+  0: 'oklch(0.60 0.19 22)',   // P0 rose
+  1: 'oklch(0.72 0.16 65)',   // P1 amber
+  2: 'oklch(0.56 0.12 265)',  // P2 indigo/periwinkle
+  3: 'oklch(0.66 0.04 250)',  // P3 slate
+  4: 'oklch(0.78 0.02 80)',   // P4 warm stone
+  unset: 'oklch(0.84 0.01 80)',
+};
+
+const isIncidentOrBug = (item) =>
+  item.type === 'Bug' || (item.tags || []).some((t) => /incident/i.test(String(t)));
+
+function StandUpStatsView({ items, sprint, featureById, onSelectPerson }) {
+  const { openItem } = useDetail();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setReady(false);
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setReady(true));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [sprint?.path, items.length]);
+
+  const total = items.length;
+  const doneCount = items.filter((i) => standupColumnOf(i) === 'done').length;
+  const activeCount = items.filter((i) => standupColumnOf(i) === 'active').length;
+  const todoCount = items.filter((i) => standupColumnOf(i) === 'todo').length;
+  const closedPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+
+  // Flow friction: carried 3+ weeks & stalled 7+ days
+  const carriedCount = items.filter((i) => !isDone(i) && (i.weeksCarried || 0) >= 3).length;
+  const stalledCount = items.filter((i) => {
+    if (isDone(i) || i.state === 'New' || !i.changedDate) return false;
+    return (Date.now() - Date.parse(i.changedDate)) / 86400000 >= 7;
+  }).length;
+
+  // Sprint time calculation
+  const sprintTiming = useMemo(() => {
+    const startRaw = sprint?.start || sprint?.startDate;
+    const finishRaw = sprint?.finish || sprint?.finishDate;
+    if (!startRaw || !finishRaw) return null;
+    const startMs = Date.parse(startRaw);
+    const endMs = Date.parse(finishRaw) + 86400000;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+    const totalMs = endMs - startMs;
+    const totalDays = Math.max(1, Math.round(totalMs / 86400000));
+    const now = Date.now();
+    const elapsedMs = Math.min(totalMs, Math.max(0, now - startMs));
+    const elapsedPct = Math.round((elapsedMs / totalMs) * 100);
+    const remainingPct = 100 - elapsedPct;
+    const remainingDays = Math.max(0, Math.ceil((endMs - now) / 86400000));
+    return { totalDays, elapsedPct, remainingPct, remainingDays };
+  }, [sprint]);
+
+  // Planned vs Unplanned
+  const unplannedCount = items.filter((i) => isSprintUnplanned(i)).length;
+  const plannedCount = Math.max(0, total - unplannedCount);
+  const unplannedPct = total > 0 ? Math.round((unplannedCount / total) * 100) : 0;
+  const plannedPct = total > 0 ? 100 - unplannedPct : 0;
+
+  const scopeSlices = [
+    { key: 'planned', label: 'Planned scope', count: plannedCount, pct: plannedPct, color: 'oklch(0.56 0.12 265)' },
+    { key: 'unplanned', label: 'Sprint-Unplanned', count: unplannedCount, pct: unplannedPct, color: 'oklch(0.76 0.16 70)', flame: true },
+  ];
+
+  // Priority breakdown
+  const prioritySlices = useMemo(() => {
+    const counts = new Map(PRIORITIES.map((p) => [p.value, 0]));
+    let unset = 0;
+    for (const item of items) {
+      if (item.priority != null && counts.has(Number(item.priority))) {
+        counts.set(Number(item.priority), counts.get(Number(item.priority)) + 1);
+      } else {
+        unset += 1;
+      }
+    }
+    const list = PRIORITIES.map((p) => {
+      const c = counts.get(p.value) || 0;
+      return {
+        key: `p${p.value}`,
+        priority: p.value,
+        label: p.label,
+        hint: p.hint,
+        count: c,
+        pct: total > 0 ? Math.round((c / total) * 100) : 0,
+        color: PRIORITY_COLORS[p.value],
+      };
+    });
+    if (unset > 0) {
+      list.push({
+        key: 'unset',
+        priority: null,
+        label: 'Unset',
+        hint: 'Unassigned',
+        count: unset,
+        pct: total > 0 ? Math.round((unset / total) * 100) : 0,
+        color: PRIORITY_COLORS.unset,
+      });
+    }
+    return list;
+  }, [items, total]);
+
+  // Simple unplanned fires count per teammate
+  const memberFires = useMemo(() => {
+    const rows = STANDUP_TEAM.map((m) => {
+      const list = items.filter((i) => matchTeamMember(i, m));
+      const unplanned = list.filter((i) => isSprintUnplanned(i)).length;
+      return { member: m, unplanned, total: list.length };
+    }).filter((r) => r.unplanned > 0);
+    rows.sort((a, b) => b.unplanned - a.unplanned || b.total - a.total);
+    return rows;
+  }, [items]);
+  const maxFires = Math.max(1, ...memberFires.map((r) => r.unplanned));
+
+  // Top Features in this sprint
+  const topFeatures = useMemo(() => {
+    const map = new Map();
+    for (const item of items) {
+      if (!item.featureId) continue;
+      const cur = map.get(item.featureId) || { featureId: item.featureId, total: 0, done: 0, unplanned: 0 };
+      cur.total += 1;
+      if (standupColumnOf(item) === 'done') cur.done += 1;
+      if (isSprintUnplanned(item)) cur.unplanned += 1;
+      map.set(item.featureId, cur);
+    }
+    return [...map.values()]
+      .sort((a, b) => b.total - a.total || b.done - a.done)
+      .slice(0, 5)
+      .map((row) => ({
+        ...row,
+        title: featureById.get(row.featureId)?.title || `Feature #${row.featureId}`,
+        pct: Math.round((row.done / row.total) * 100),
+      }));
+  }, [items, featureById]);
+  const maxFeatureTotal = Math.max(1, ...topFeatures.map((f) => f.total));
+
+  const urgentCount = (prioritySlices.find((s) => s.priority === 0)?.count || 0) + (prioritySlices.find((s) => s.priority === 1)?.count || 0);
+  const onPace = sprintTiming ? closedPct >= sprintTiming.elapsedPct : true;
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 pb-6">
+        {/* Tier 1: Sprint Pace & Completion */}
+        <section aria-label="Sprint completion progress">
+          <div className="flex flex-wrap items-baseline justify-between gap-4">
+            <div className="flex items-baseline gap-3">
+              <span className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">{closedPct}%</span>
+              <span className="text-xs font-medium text-muted-foreground tabular-nums">
+                closed ({doneCount} of {total} tickets) · {activeCount} in progress · {todoCount} to do
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs tabular-nums">
+              {carriedCount > 0 && (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 font-medium text-muted-foreground">
+                  {carriedCount} carried 3+ wks
+                </span>
+              )}
+              {stalledCount > 0 && (
+                <span className="rounded-full bg-amber-50 px-2.5 py-0.5 font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-200">
+                  {stalledCount} stalled 7+ days
+                </span>
+              )}
+              {sprintTiming && (
+                <span
+                  className={cn(
+                    'rounded-full px-2.5 py-0.5 font-medium',
+                    onPace
+                      ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-200'
+                      : 'bg-amber-50 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200',
+                  )}
+                >
+                  {onPace ? 'On pace' : 'Behind sprint clock'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="relative mt-4 mb-7">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-[width] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none',
+                  onPace ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-primary',
+                )}
+                style={{ width: `${ready ? closedPct : 0}%` }}
+              />
+            </div>
+
+            {sprintTiming && (
+              <div
+                className="pointer-events-none absolute top-0 flex -translate-x-1/2 flex-col items-center transition-[left] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+                style={{ left: `${ready ? Math.min(96, Math.max(4, sprintTiming.elapsedPct)) : 4}%` }}
+              >
+                <span aria-hidden className="-mt-1 h-5 w-0.5 rounded-full bg-foreground" />
+                <svg viewBox="0 0 10 6" className="mt-0.5 size-2.5 fill-foreground text-foreground" aria-hidden="true">
+                  <path d="M5 0L10 6H0L5 0Z" />
+                </svg>
+                <span className="mt-0.5 rounded bg-foreground px-1.5 py-0.5 text-[10.5px] leading-none font-medium whitespace-nowrap text-background tabular-nums shadow-xs">
+                  {sprintTiming.remainingPct}% days left ({sprintTiming.remainingDays}d)
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Tier 2: Bounded Donut Charts (Interruptions vs Planned, and Priority P0-P4) */}
+        <div className="grid grid-cols-1 gap-6 border-t border-border/60 pt-6 md:grid-cols-2 md:gap-8">
+          <section aria-label="Planned vs Unplanned" className="flex flex-col gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-foreground">Planned vs. Unplanned ratio</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Planned sprint tickets compared against unplanned fires.
+              </p>
+            </div>
+            <div className="flex items-center gap-5 pt-1">
+              <DonutChart
+                slices={scopeSlices}
+                ready={ready}
+                centerValue={`${unplannedPct}%`}
+                centerLabel="unplanned"
+              />
+              <ul className="flex w-full max-w-[14.5rem] flex-col gap-2 text-xs">
+                {scopeSlices.map((s) => (
+                  <li key={s.key} className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-2 font-medium text-foreground/90">
+                      {s.flame ? (
+                        <Flame className="size-3.5 shrink-0 fill-current text-amber-600 dark:text-amber-300" />
+                      ) : (
+                        <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+                      )}
+                      <span className="truncate">{s.label}</span>
+                    </span>
+                    <span className="shrink-0 font-mono text-muted-foreground tabular-nums">
+                      <strong className="font-semibold text-foreground">{s.count}</strong> ({s.pct}%)
+                    </span>
+                  </li>
+                ))}
+                <li className="flex items-center justify-between gap-2 border-t border-border/60 pt-1.5 text-muted-foreground">
+                  <span>Total sprint tickets</span>
+                  <span className="font-mono font-semibold text-foreground tabular-nums">{total}</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <section aria-label="Tickets by priority" className="flex flex-col gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-foreground">Priority distribution (P0–P4)</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Urgency split across the team&apos;s current sprint workload.
+              </p>
+            </div>
+            <div className="flex items-center gap-5 pt-1">
+              <DonutChart
+                slices={prioritySlices}
+                ready={ready}
+                centerValue={urgentCount}
+                centerLabel="P0 / P1 urgent"
+              />
+              <ul className="flex w-full max-w-[14.5rem] flex-col gap-1.5 text-xs">
+                {prioritySlices.map((s) => (
+                  <li key={s.key} className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+                      {s.priority != null ? (
+                        <PriorityPill priority={s.priority} compact />
+                      ) : (
+                        <span className="font-medium text-muted-foreground">Unset</span>
+                      )}
+                      <span className="truncate text-muted-foreground">{s.hint}</span>
+                    </span>
+                    <span className="shrink-0 font-mono text-muted-foreground tabular-nums">
+                      <strong className="font-semibold text-foreground">{s.count}</strong> ({s.pct}%)
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        </div>
+
+        {/* Tier 3: Unplanned Fires by Teammate & Top Sprint Initiatives */}
+        <div className="grid grid-cols-1 gap-6 border-t border-border/60 pt-6 md:grid-cols-2 md:gap-8">
+          <section aria-label="Unplanned fires by teammate" className="flex flex-col gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-foreground">Unplanned fires by teammate</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Number of Sprint-Unplanned tickets per person in this sprint.
+              </p>
+            </div>
+            {memberFires.length === 0 ? (
+              <p className="py-4 text-xs text-muted-foreground">No unplanned tickets in this sprint.</p>
+            ) : (
+              <ul className="flex flex-col gap-2.5 pt-1">
+                {memberFires.map((row) => {
+                  const barW = (row.unplanned / maxFires) * 100;
+                  return (
+                    <li key={row.member.id}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectPerson?.(row.member.id)}
+                        className="group flex w-full flex-col gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none"
+                      >
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="inline-flex min-w-0 items-center gap-2 font-medium text-foreground">
+                            <MemberAvatar member={row.member} size="size-5" />
+                            <span className="truncate group-hover:underline">{row.member.name}</span>
+                          </span>
+                          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-amber-700 tabular-nums dark:text-amber-300">
+                            <Flame className="size-3.5 fill-current text-amber-500 dark:text-amber-300" />
+                            {row.unplanned}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted/70">
+                          <div
+                            className="h-full rounded-full bg-amber-400 transition-[width] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] dark:bg-amber-400"
+                            style={{ width: `${ready ? barW : 0}%` }}
+                          />
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section aria-label="Top sprint initiatives" className="flex flex-col gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-foreground">Top sprint initiatives (by Feature)</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Features concentrating the most team tickets in this sprint and their completion.
+              </p>
+            </div>
+            {topFeatures.length === 0 ? (
+              <p className="py-4 text-xs text-muted-foreground">No parented Features in this sprint.</p>
+            ) : (
+              <ul className="flex flex-col gap-2.5 pt-1">
+                {topFeatures.map((f) => {
+                  const totalW = (f.total / maxFeatureTotal) * 100;
+                  const doneW = (f.done / maxFeatureTotal) * 100;
+                  return (
+                    <li key={f.featureId}>
+                      <button
+                        type="button"
+                        onClick={() => openItem(f.featureId)}
+                        className="group flex w-full flex-col gap-1 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none"
+                      >
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="min-w-0 truncate font-medium text-foreground group-hover:underline">
+                            {f.title}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                            <strong className="font-semibold text-foreground">{f.done}/{f.total}</strong> done ({f.pct}%)
+                          </span>
+                        </div>
+                        <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted/70">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full bg-primary/25 transition-[width] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                            style={{ width: `${ready ? totalW : 0}%` }}
+                          />
+                          <div
+                            className="relative h-full rounded-full bg-emerald-500 transition-[width] duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] dark:bg-emerald-400"
+                            style={{ width: `${ready ? doneW : 0}%` }}
+                          />
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -653,6 +1061,8 @@ export function StandUpView({
   const [shuffleTick, setShuffleTick] = useState(0);
   const tabRefs = useRef(new Map());
   const prevTops = useRef(new Map());
+  const [indicatorTop, setIndicatorTop] = useState(12);
+  const [indicatorReady, setIndicatorReady] = useState(false);
   const [selectedId, setSelectedId] = useState(() => {
     const meEmail = String(data?.me?.email || 'raulpo@microsoft.com').toLowerCase();
     const match = STANDUP_TEAM.find((m) => m.aliases.some((a) => a.toLowerCase() === meEmail));
@@ -662,9 +1072,14 @@ export function StandUpView({
   const [draggingId, setDraggingId] = useState(null);
   const [overCol, setOverCol] = useState(null);
 
+  const isStatsSelected = selectedId === STATS_TAB_ID;
   const selectedMember = useMemo(
     () => teamOrder.find((m) => m.id === selectedId) || teamOrder[0],
     [teamOrder, selectedId],
+  );
+  const currentSprintObj = useMemo(
+    () => (data?.sprints || []).find((s) => s.path === sprintPath) || null,
+    [data?.sprints, sprintPath],
   );
 
   function shuffleTeam() {
@@ -715,30 +1130,41 @@ export function StandUpView({
     });
   }, [teamOrder, shuffleTick]);
 
-  // [ / ] or Up / Down arrows step through the vertical team member tabs in their current order.
+  // [ / ] or Up / Down arrows step through the vertical team member tabs (+ Stats tab at the end).
   useEffect(() => {
     if (!active) return;
+    const navIds = [...teamOrder.map((m) => m.id), STATS_TAB_ID];
     const onKey = (e) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isTyping(e) || overlayOpen()) return;
       if (e.key === '[' || e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
         e.preventDefault();
         setSelectedId((cur) => {
-          const idx = teamOrder.findIndex((m) => m.id === cur);
-          const nextIdx = (idx - 1 + teamOrder.length) % teamOrder.length;
-          return teamOrder[nextIdx].id;
+          const idx = navIds.indexOf(cur);
+          const nextIdx = (idx - 1 + navIds.length) % navIds.length;
+          return navIds[nextIdx];
         });
       } else if (e.key === ']' || e.key === 'ArrowDown' || e.key === 'ArrowRight') {
         e.preventDefault();
         setSelectedId((cur) => {
-          const idx = teamOrder.findIndex((m) => m.id === cur);
-          const nextIdx = (idx + 1) % teamOrder.length;
-          return teamOrder[nextIdx].id;
+          const idx = navIds.indexOf(cur);
+          const nextIdx = (idx + 1) % navIds.length;
+          return navIds[nextIdx];
         });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [active, teamOrder]);
+
+  // Refresh Stand Up data in the background whenever entering Stand Up or switching to a person's tab.
+  const refreshRef = useRef(onRefreshStandup);
+  useLayoutEffect(() => {
+    refreshRef.current = onRefreshStandup;
+  });
+  useEffect(() => {
+    if (!active || !sprintPath) return;
+    refreshRef.current?.();
+  }, [active, selectedId, sprintPath]);
 
   const mergedFeatures = useMemo(() => {
     const map = new Map();
@@ -764,6 +1190,14 @@ export function StandUpView({
     );
   }, [allItems]);
 
+  const activeTabKey = isStatsSelected ? STATS_TAB_ID : selectedMember.id;
+  useLayoutEffect(() => {
+    const el = tabRefs.current.get(activeTabKey);
+    if (!el) return;
+    setIndicatorTop(el.offsetTop);
+    setIndicatorReady(true);
+  }, [activeTabKey, teamOrder, active]);
+
   const memberItems = useMemo(() => {
     const withClosed = { ...filters, showClosed: true };
     return allItems
@@ -772,16 +1206,28 @@ export function StandUpView({
   }, [allItems, selectedMember, filters, featureById]);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 items-stretch px-4 pb-3">
-      {/* Vertical Chrome-like tab strip: no borders on inactive people, active tab overlaps enclosure border seamlessly */}
+    <div className="mx-4 mb-3 flex h-full min-h-0 flex-1 items-stretch rounded-2xl bg-muted/65 p-1.5 dark:bg-muted/40">
+      {/* Vertical tab rail with fixed-height tabs and a constant-height sliding bg-card indicator */}
       <nav
         aria-label="Team members"
         role="tablist"
         aria-orientation="vertical"
-        className="z-20 flex w-44 shrink-0 flex-col gap-0.5 pt-2 pb-1"
+        className="relative z-20 flex w-44 shrink-0 flex-col gap-0.5 py-3 pl-1"
       >
+        {indicatorReady && (
+          <div
+            aria-hidden="true"
+            style={{
+              transform: `translate3d(0, ${indicatorTop}px, 0)`,
+            }}
+            className="pointer-events-none absolute top-0 right-0 left-1 h-11 rounded-l-2xl bg-card transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          >
+            <TabCurveEars />
+          </div>
+        )}
+
         {teamOrder.map((m) => {
-          const isSelected = m.id === selectedMember.id;
+          const isSelected = !isStatsSelected && m.id === selectedMember.id;
           const unplanned = unplannedByMember.get(m.id) || 0;
           return (
             <button
@@ -795,17 +1241,17 @@ export function StandUpView({
               aria-selected={isSelected}
               onClick={() => setSelectedId(m.id)}
               className={cn(
-                'group relative flex items-center gap-2.5 rounded-l-xl rounded-r-none py-2 pl-2.5 text-left transition-colors focus-visible:outline-none',
+                'group relative z-10 flex h-11 shrink-0 items-center gap-2.5 pr-3 pl-2.5 text-left transition-colors focus-visible:outline-none',
                 isSelected
-                  ? 'z-20 -mr-[2px] border border-r-0 border-border bg-card pr-3.5 font-semibold text-foreground'
-                  : 'border border-transparent bg-transparent pr-2.5 font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  ? 'rounded-l-2xl font-semibold text-foreground'
+                  : 'mr-1.5 rounded-xl font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground',
               )}
             >
               <MemberAvatar member={m} selected={isSelected} size="size-7" />
               <div className="min-w-0 flex-1">
                 <span className="block truncate text-xs leading-tight">{m.name}</span>
                 {unplanned > 0 && (
-                  <span className="mt-0.5 flex items-center gap-1 text-[10.5px] leading-tight font-medium text-amber-700 tabular-nums dark:text-amber-300">
+                  <span className="mt-0.5 flex items-center gap-1 text-[10px] leading-none font-medium text-amber-700 tabular-nums dark:text-amber-300">
                     <Flame className="size-2.5 shrink-0 fill-current text-amber-600 dark:text-amber-300" />
                     {unplanned} unplanned
                   </span>
@@ -814,11 +1260,46 @@ export function StandUpView({
             </button>
           );
         })}
+
+        {/* Stats tab at the bottom of the vertical tab list */}
+        <div className="my-1 mr-3 ml-2 border-t border-border/60" aria-hidden />
+        <button
+          ref={(el) => {
+            if (el) tabRefs.current.set(STATS_TAB_ID, el);
+            else tabRefs.current.delete(STATS_TAB_ID);
+          }}
+          type="button"
+          role="tab"
+          aria-selected={isStatsSelected}
+          onClick={() => setSelectedId(STATS_TAB_ID)}
+          className={cn(
+            'group relative z-10 flex h-11 shrink-0 items-center gap-2.5 pr-3 pl-2.5 text-left transition-colors focus-visible:outline-none',
+            isStatsSelected
+              ? 'rounded-l-2xl font-semibold text-foreground'
+              : 'mr-1.5 rounded-xl font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground',
+          )}
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'grid size-7 shrink-0 place-items-center rounded-full transition-colors',
+              isStatsSelected
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-background/80 text-muted-foreground group-hover:bg-background group-hover:text-foreground',
+            )}
+          >
+            <PieChart className="size-3.5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <span className="block truncate text-xs leading-tight">Sprint stats</span>
+          </div>
+        </button>
+
         <button
           type="button"
           onClick={shuffleTeam}
           title="Shuffle speaker order"
-          className="group/shuf relative mt-auto mr-2 inline-flex h-8 items-center justify-center gap-1.5 overflow-hidden rounded-lg border border-border/70 bg-transparent px-3 text-xs font-medium text-muted-foreground transition-[color,background-color,border-color,transform] duration-150 hover:border-foreground/25 hover:bg-muted/60 hover:text-foreground active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="group/shuf relative z-10 mt-auto mr-2 ml-1 inline-flex h-8 items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-border/70 bg-background/60 px-3 text-xs font-medium text-muted-foreground transition-[color,background-color,border-color,transform] duration-150 hover:border-foreground/25 hover:bg-background hover:text-foreground active:scale-95 focus-visible:outline-none"
         >
           <span key={shuffleTick} className={cn('inline-flex', shuffleTick > 0 && 'animate-shuffle-spin motion-reduce:animate-none')}>
             <Shuffle className="size-3.5 transition-transform duration-200 group-hover/shuf:rotate-12" />
@@ -827,11 +1308,11 @@ export function StandUpView({
         </button>
       </nav>
 
-      {/* Active person tab enclosure */}
+      {/* Active person or stats tab enclosure */}
       <div
         role="tabpanel"
-        aria-label={`${selectedMember.fullName} sprint board`}
-        className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col gap-3 rounded-xl border border-border bg-card p-4"
+        aria-label={isStatsSelected ? 'Sprint statistics' : `${selectedMember.fullName} sprint board`}
+        className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col gap-3 rounded-xl bg-card p-4"
       >
         {/* Minimal top-right controls inside the enclosure */}
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -842,47 +1323,52 @@ export function StandUpView({
             <SelectContent position="popper">
               {(data?.sprints || []).map((s) => (
                 <SelectItem key={s.path} value={s.path}>
-                  Sprint {s.name} <span className="text-muted-foreground">· {s.timeFrame}</span>
+                  Sprint {s.name}{' '}
+                  <span className={s.timeFrame === 'current' ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
+                    · {s.timeFrame}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <div className="inline-flex h-7 items-center rounded-md bg-muted/60 p-0.5">
-            <button
-              type="button"
-              onClick={() => setLayoutMode('board')}
-              className={cn(
-                'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
-                layoutMode === 'board' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <LayoutGrid className="size-3.5" />
-              Board
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMode('kanban')}
-              className={cn(
-                'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
-                layoutMode === 'kanban' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <KanbanSquare className="size-3.5" />
-              Kanban
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMode('features')}
-              className={cn(
-                'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
-                layoutMode === 'features' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Layers className="size-3.5" />
-              By Feature
-            </button>
-          </div>
+          {!isStatsSelected && (
+            <div className="inline-flex h-7 items-center rounded-md bg-muted/60 p-0.5">
+              <button
+                type="button"
+                onClick={() => setLayoutMode('board')}
+                className={cn(
+                  'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
+                  layoutMode === 'board' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <LayoutGrid className="size-3.5" />
+                Board
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('kanban')}
+                className={cn(
+                  'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
+                  layoutMode === 'kanban' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <KanbanSquare className="size-3.5" />
+                Kanban
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('features')}
+                className={cn(
+                  'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
+                  layoutMode === 'features' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Layers className="size-3.5" />
+                By Feature
+              </button>
+            </div>
+          )}
         </div>
 
         {standup?.error && (
@@ -894,7 +1380,7 @@ export function StandUpView({
           </div>
         )}
 
-        {/* Main content area inside the person's tab enclosure */}
+        {/* Main content area inside the tab enclosure */}
         {standup?.loading && !allItems.length ? (
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 md:grid-cols-[repeat(3,minmax(0,20rem))]">
             {STANDUP_COLUMNS.map((col) => (
@@ -906,6 +1392,13 @@ export function StandUpView({
               </div>
             ))}
           </div>
+        ) : isStatsSelected ? (
+          <StandUpStatsView
+            items={allItems}
+            sprint={currentSprintObj}
+            featureById={featureById}
+            onSelectPerson={(id) => setSelectedId(id)}
+          />
         ) : layoutMode === 'board' ? (
           <MemberWhiteboard
             member={selectedMember}
@@ -925,6 +1418,7 @@ export function StandUpView({
             features={mergedFeatures}
             featureById={featureById}
             pendingIds={pendingIds}
+            reasonsById={reasonsById}
             onUpdate={onUpdate}
             memberName={selectedMember.name}
           />
@@ -977,7 +1471,7 @@ export function StandUpView({
                           data={data}
                           features={mergedFeatures}
                           pending={pendingIds.has(item.id)}
-                          quiet
+                          reasons={reasonsById.get(item.id)}
                           onUpdate={onUpdate}
                           onDragStart={(id) => setDraggingId(id)}
                           onDragEnd={() => {
