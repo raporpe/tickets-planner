@@ -112,6 +112,8 @@ jobs:
           ' "$VER" "$BASE" "$PUB_DATE" "$WIN_SIG" "$ARM_SIG"
           cat artifacts/latest.json
           az storage blob upload-batch --destination releases --destination-path "$TAG" --source artifacts --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
+          az storage blob upload --container-name releases --name "Tickets-planner-setup-x64.exe" --file "artifacts/Tickets.planner_${VER}_x64-setup.exe" --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
+          az storage blob upload --container-name releases --name "Tickets-planner-macos-arm64.dmg" --file "artifacts/Tickets.planner_${VER}_aarch64.dmg" --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
           az storage blob upload --container-name releases --name "latest.json" --file artifacts/latest.json --content-type application/json --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
