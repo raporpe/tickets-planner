@@ -1,27 +1,17 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, ChevronUp, Inbox, History, LayoutGrid, X } from 'lucide-react';
+import { CalendarClock, CalendarPlus, ChevronLeft, ChevronRight, ChevronUp, Inbox, History, Layers, LayoutGrid, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { WorkItemCard } from '@/components/work-item';
 import { HierarchyHover } from '@/components/hierarchy';
+import { useDetail } from '@/lib/detail';
 import { useBoardLayout } from '@/lib/board-layout';
 import { useBoardNotes } from '@/lib/board-notes';
 import { useSmoothBoardZoom } from '@/lib/board-zoom';
-import { buildColumns, canBeInSprint, columnKeyOf, isDone } from '@/lib/planning';
+import { buildColumns, canBeInSprint, columnKeyOf, columnRank, isDone } from '@/lib/planning';
 
 const CARD_W = 272;
 const PAD = 12;
@@ -227,8 +217,10 @@ function BoardNote({ id, note, left, top, zoom = 1, editing, onEdit, onChange, o
 const ghostTransform = (x, y, z = 1) => `translate3d(${x}px, ${y}px, 0) scale(${z})`;
 
 export function PlanView({ data, items, features, pendingIds, reasonsById, onUpdate }) {
-  const { layout, place, clearColumn } = useBoardLayout();
+  const { openItem } = useDetail();
+  const { layout, place } = useBoardLayout();
   const { notes, addNote, updateNote, removeNote } = useBoardNotes();
+  const [viewMode, setViewMode] = useState('board');
   const [editingNote, setEditingNote] = useState(null);
   const [drag, setDrag] = useState(null);
   const [snapPreview, setSnapPreview] = useState(null);
@@ -280,7 +272,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const current = drawerCols.find((c) => c.sprint?.timeFrame === 'current');
   const drawerCount = drawerCols.reduce((n, c) => n + byCol.get(c.key).filter((i) => !isDone(i)).length, 0);
   const allCols = [backlog, next, later, ...drawerCols].filter(Boolean);
-  const { zoom, zoomRef, resetZoom } = useSmoothBoardZoom(board, next?.key);
+  const { zoom, zoomRef, resetZoom } = useSmoothBoardZoom(board, viewMode === 'board' ? next?.key : null);
 
   useEffect(() => {
     if (!board.current) return undefined;
@@ -352,7 +344,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     const item = items.find((i) => i.id === d.id);
     const col = allCols.find((c) => c.key === targetAt(x, y));
     if (!item || !col || !droppableFor(col, item)) return;
-    if (col.key === next?.key && computed.current) {
+    if (viewMode === 'board' && col.key === next?.key && computed.current) {
       const el = board.current;
       const r = el.getBoundingClientRect();
       const z = d.z || zoomRef.current;
@@ -383,7 +375,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
   const startDrag = (e, item) => {
     if (e.button !== 0 || pendingIds.has(item.id) || e.target.closest(NO_DRAG)) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const onBoard = board.current?.contains(e.currentTarget);
+    const onBoard = viewMode === 'board' && board.current?.contains(e.currentTarget);
     const z = onBoard ? zoomRef.current : 1;
     const d = {
       id: item.id,
@@ -401,7 +393,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     // Pointer moves only touch the floating card's transform; React re-renders just when the drop target or grid cell changes.
     const paint = () => {
       frame = 0;
-      const curZ = zoomRef.current;
+      const curZ = onBoard ? zoomRef.current : 1;
       if (ghost.current) {
         ghost.current.style.transform = ghostTransform(last.clientX - d.dx * curZ, last.clientY - d.dy * curZ, curZ);
       }
@@ -410,7 +402,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
         over = o;
         setDrag((cur) => cur && { ...cur, over: o });
       }
-      if (o === next?.key && board.current) {
+      if (viewMode === 'board' && o === next?.key && board.current) {
         const el = board.current;
         const r = el.getBoundingClientRect();
         const rawPx = Math.max(PAD, Math.round((last.clientX - r.left + el.scrollLeft) / curZ - d.dx));
@@ -502,6 +494,42 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
     );
   };
 
+  const featureColumns = useMemo(() => {
+    const featureById = new Map((features || []).map((f) => [f.id, f]));
+    const groups = new Map();
+    for (const item of nextList) {
+      const fid = item.featureId ?? null;
+      if (!groups.has(fid)) groups.set(fid, []);
+      groups.get(fid).push(item);
+    }
+    const rankFeature = (fid) => {
+      if (fid == null) return 999;
+      const f = featureById.get(fid);
+      if (!f) return 998;
+      if (!f.onBoard) return 997;
+      return columnRank(f.column);
+    };
+    const stateRank = (item) => {
+      if (item.state === 'New') return 0;
+      if (isDone(item) || item.state === 'Resolved') return 2;
+      return 1;
+    };
+    return [...groups.entries()]
+      .sort(([a], [b]) => {
+        const ra = rankFeature(a);
+        const rb = rankFeature(b);
+        if (ra !== rb) return ra - rb;
+        return (featureById.get(a)?.title || '').localeCompare(featureById.get(b)?.title || '');
+      })
+      .map(([fid, list]) => ({
+        featureId: fid,
+        feature: fid != null ? featureById.get(fid) : null,
+        items: [...list].sort(
+          (a, b) => stateRank(a) - stateRank(b) || (a.priority ?? 2) - (b.priority ?? 2) || b.id - a.id,
+        ),
+      }));
+  }, [nextList, features]);
+
   // Dragging empty space pans the whiteboard, like a canvas.
   const startPan = (e) => {
     if (e.button !== 0 || e.target.closest('[data-card-id], [data-note]')) return;
@@ -556,8 +584,8 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                 </Button>
               </div>
               <ColumnTitle col={next} />
-              <div className="ml-auto flex items-center gap-1">
-                {Math.round(zoom * 100) !== 100 && (
+              <div className="ml-auto flex items-center gap-2">
+                {viewMode === 'board' && Math.round(zoom * 100) !== 100 && (
                   <Button
                     variant="ghost"
                     size="xs"
@@ -573,103 +601,146 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
                     Back to {defaultSprint.timeFrame === 'current' ? 'current' : defaultSprint.name}
                   </Button>
                 )}
-                {nextList.some((i) => layout[i.id]?.col === next.key) && (
-                  <AlertDialog>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-6 text-muted-foreground" aria-label={`Tidy up ${next.title}`}>
-                            <LayoutGrid className="size-3.5" />
-                          </Button>
-                        </AlertDialogTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>Tidy up: forget where you placed these cards</TooltipContent>
-                    </Tooltip>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Tidy up {next.title}?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Your ordering will be removed and you won't be able to go back.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction variant="destructive" onClick={() => clearColumn(next.key)}>
-                          Tidy up
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
+                <div className="inline-flex h-7 items-center rounded-md bg-muted/60 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('board')}
+                    className={cn(
+                      'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
+                      viewMode === 'board' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <LayoutGrid className="size-3.5" />
+                    Board
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('features')}
+                    className={cn(
+                      'inline-flex h-6 items-center gap-1 rounded px-2 text-xs font-medium transition-colors',
+                      viewMode === 'features' ? 'bg-background text-foreground shadow-2xs' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Layers className="size-3.5" />
+                    By Feature
+                  </button>
+                </div>
                 <Count items={nextList} />
               </div>
             </header>
             <div ref={board} className="whiteboard-scroll relative min-h-0 flex-1 overflow-auto">
-              <div
-                className="whiteboard-dots relative isolate min-h-full cursor-grab select-none"
-                style={{
-                  height: Math.ceil(boardHeight * zoom),
-                  width: canvasWidth ? Math.ceil(canvasWidth * zoom) : undefined,
-                  backgroundSize: `${18 * zoom}px ${18 * zoom}px`,
-                }}
-                onPointerDown={startPan}
-                onDoubleClick={addNoteAt}
-              >
+              {viewMode === 'features' ? (
                 <div
-                  className="relative origin-top-left"
-                  style={{
-                    height: boardHeight,
-                    width: canvasWidth || undefined,
-                    transform: zoom !== 1 ? `scale(${zoom})` : undefined,
-                  }}
+                  onPointerDown={startPan}
+                  className="flex min-h-full cursor-grab gap-6 p-4 select-none active:cursor-grabbing"
                 >
-                  {nextList.length === 0 && boardNotes.length === 0 && (
-                    <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
+                  {featureColumns.length === 0 ? (
+                    <p className="m-auto py-8 text-center text-xs text-muted-foreground">
+                      Nothing planned yet. Drag cards here from the Backlog or other sprints.
+                    </p>
+                  ) : (
+                    featureColumns.map((col) => (
+                      <section
+                        key={col.featureId ?? 'unparented'}
+                        aria-label={col.feature ? col.feature.title : 'Standalone'}
+                        className="flex min-h-0 w-[20.5rem] shrink-0 flex-col"
+                      >
+                        <header className="mb-2.5 flex items-center gap-2 px-1">
+                          <span
+                            aria-hidden
+                            className={cn(
+                              'size-2 shrink-0 rounded-full',
+                              col.feature ? 'bg-emerald-400 dark:bg-emerald-300' : 'bg-stone-300 dark:bg-stone-500',
+                            )}
+                          />
+                          {col.feature ? (
+                            <button
+                              type="button"
+                              onClick={() => openItem(col.feature.id)}
+                              title={`${col.feature.title} (#${col.feature.id})`}
+                              className="min-w-0 truncate text-left text-xs font-semibold text-foreground/90 hover:text-primary hover:underline hover:underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none"
+                            >
+                              {col.feature.title}
+                            </button>
+                          ) : (
+                            <h3 className="truncate text-xs font-semibold text-muted-foreground">Standalone / No Feature</h3>
+                          )}
+                          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{col.items.length}</span>
+                        </header>
+                        <div className="flex flex-col gap-2">
+                          {col.items.map(listCard)}
+                        </div>
+                      </section>
+                    ))
                   )}
-                  {boardNotes.map(([id, n]) => (
-                    <BoardNote
-                      key={id}
-                      id={id}
-                      note={n}
-                      left={noteLeft(n)}
-                      top={n.y}
-                      zoom={zoom}
-                      editing={editingNote === id}
-                      onEdit={setEditingNote}
-                      onChange={updateNote}
-                      onRemove={removeNote}
-                      toPos={notePos}
-                    />
-                  ))}
-                  {snapPreview && (
-                    <div
-                      aria-hidden
-                      style={{ left: snapPreview.x, top: snapPreview.y, width: placed.cardW, height: snapPreview.h }}
-                      className="pointer-events-none absolute rounded-lg border border-dashed border-primary/40 bg-primary/[0.04] transition-[left,top,height] duration-120 ease-out"
-                    />
-                  )}
-                  {nextList.map((item) => {
-                    const p = placed.pos.get(item.id);
-                    const isGliding = glide?.id === item.id;
-                    return (
-                      <PlanCard
-                        key={item.id}
-                        {...cardProps(item)}
-                        onStart={onStart}
-                        register={register}
-                        hidden={drag?.id === item.id}
-                        settle={lastDrop.current === item.id ? drops.current : 0}
-                        free
-                        x={isGliding ? glide.x : p.x}
-                        y={isGliding ? glide.y : p.y}
-                        w={placed.cardW}
-                        z={p.z}
-                        animate={!isGliding}
-                      />
-                    );
-                  })}
                 </div>
-              </div>
+              ) : (
+                <div
+                  className="whiteboard-dots relative isolate min-h-full cursor-grab select-none"
+                  style={{
+                    height: Math.ceil(boardHeight * zoom),
+                    width: canvasWidth ? Math.ceil(canvasWidth * zoom) : undefined,
+                    backgroundSize: `${18 * zoom}px ${18 * zoom}px`,
+                  }}
+                  onPointerDown={startPan}
+                  onDoubleClick={addNoteAt}
+                >
+                  <div
+                    className="relative origin-top-left"
+                    style={{
+                      height: boardHeight,
+                      width: canvasWidth || undefined,
+                      transform: zoom !== 1 ? `scale(${zoom})` : undefined,
+                    }}
+                  >
+                    {nextList.length === 0 && boardNotes.length === 0 && (
+                      <p className="px-2 py-6 text-center text-xs text-muted-foreground">Nothing planned yet. Drag cards here, or double-click to write a note.</p>
+                    )}
+                    {boardNotes.map(([id, n]) => (
+                      <BoardNote
+                        key={id}
+                        id={id}
+                        note={n}
+                        left={noteLeft(n)}
+                        top={n.y}
+                        zoom={zoom}
+                        editing={editingNote === id}
+                        onEdit={setEditingNote}
+                        onChange={updateNote}
+                        onRemove={removeNote}
+                        toPos={notePos}
+                      />
+                    ))}
+                    {snapPreview && (
+                      <div
+                        aria-hidden
+                        style={{ left: snapPreview.x, top: snapPreview.y, width: placed.cardW, height: snapPreview.h }}
+                        className="pointer-events-none absolute rounded-lg border border-dashed border-primary/40 bg-primary/[0.04] transition-[left,top,height] duration-120 ease-out"
+                      />
+                    )}
+                    {nextList.map((item) => {
+                      const p = placed.pos.get(item.id);
+                      const isGliding = glide?.id === item.id;
+                      return (
+                        <PlanCard
+                          key={item.id}
+                          {...cardProps(item)}
+                          onStart={onStart}
+                          register={register}
+                          hidden={drag?.id === item.id}
+                          settle={lastDrop.current === item.id ? drops.current : 0}
+                          free
+                          x={isGliding ? glide.x : p.x}
+                          y={isGliding ? glide.y : p.y}
+                          w={placed.cardW}
+                          z={p.z}
+                          animate={!isGliding}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         ) : (
@@ -853,7 +924,7 @@ export function PlanView({ data, items, features, pendingIds, reasonsById, onUpd
             className="pointer-events-none fixed top-0 left-0 z-50 origin-top-left will-change-transform"
             style={{
               width: drag.w,
-              transform: ghostTransform(drag.x - drag.dx * zoom, drag.y - drag.dy * zoom, zoom),
+              transform: ghostTransform(drag.x - drag.dx * (drag.z || 1), drag.y - drag.dy * (drag.z || 1), drag.z || 1),
             }}
           >
             <div className="animate-card-pickup motion-reduce:animate-none" style={{ transformOrigin: `${drag.dx}px ${drag.dy}px` }}>

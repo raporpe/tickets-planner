@@ -299,7 +299,12 @@ impl PlannerService {
         match self.ado.get(&url).await {
             Ok(v) => {
                 let mut map = Map::new();
-                for doc in array(&v["value"]) {
+                let docs = if v.is_array() {
+                    array(&v)
+                } else {
+                    array(&v["value"])
+                };
+                for doc in docs {
                     let entry = json!({
                         "layout": doc["layout"],
                         "notes": doc["notes"],

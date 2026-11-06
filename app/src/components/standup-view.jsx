@@ -13,7 +13,9 @@ import { useSmoothBoardZoom } from '@/lib/board-zoom';
 import { cn } from '@/lib/utils';
 import {
   attentionReasons,
+  canBeInSprint,
   columnRank,
+  computeWorkingSprintTiming,
   isDone,
   isSprintUnplanned,
   matchesFilters,
@@ -234,7 +236,10 @@ function MemberWhiteboard({ member, items, sprintPath, data, features, pendingId
   }, [items, heights]);
 
   const ordered = useMemo(
-    () => [...items].sort((a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCompare(b.type) || b.id - a.id),
+    () =>
+      items
+        .filter((i) => canBeInSprint(i.type))
+        .sort((a, b) => Number(isDone(a)) - Number(isDone(b)) || a.type.localeCompare(b.type) || b.id - a.id),
     [items],
   );
 
@@ -703,23 +708,8 @@ function StandUpStatsView({ items, sprint, featureById, onSelectPerson }) {
     return (Date.now() - Date.parse(i.changedDate)) / 86400000 >= 7;
   }).length;
 
-  // Sprint time calculation
-  const sprintTiming = useMemo(() => {
-    const startRaw = sprint?.start || sprint?.startDate;
-    const finishRaw = sprint?.finish || sprint?.finishDate;
-    if (!startRaw || !finishRaw) return null;
-    const startMs = Date.parse(startRaw);
-    const endMs = Date.parse(finishRaw) + 86400000;
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
-    const totalMs = endMs - startMs;
-    const totalDays = Math.max(1, Math.round(totalMs / 86400000));
-    const now = Date.now();
-    const elapsedMs = Math.min(totalMs, Math.max(0, now - startMs));
-    const elapsedPct = Math.round((elapsedMs / totalMs) * 100);
-    const remainingPct = 100 - elapsedPct;
-    const remainingDays = Math.max(0, Math.ceil((endMs - now) / 86400000));
-    return { totalDays, elapsedPct, remainingPct, remainingDays };
-  }, [sprint]);
+  // Sprint time calculation (working days Mon–Fri only, excluding weekends)
+  const sprintTiming = useMemo(() => computeWorkingSprintTiming(sprint), [sprint]);
 
   // Planned vs Unplanned
   const unplannedCount = items.filter((i) => isSprintUnplanned(i)).length;
@@ -781,7 +771,7 @@ function StandUpStatsView({ items, sprint, featureById, onSelectPerson }) {
   }, [items]);
   const maxFires = Math.max(1, ...memberFires.map((r) => r.unplanned));
 
-  // Top Features in this sprint
+  // Top 10 Features in this sprint
   const topFeatures = useMemo(() => {
     const map = new Map();
     for (const item of items) {
@@ -794,7 +784,7 @@ function StandUpStatsView({ items, sprint, featureById, onSelectPerson }) {
     }
     return [...map.values()]
       .sort((a, b) => b.total - a.total || b.done - a.done)
-      .slice(0, 5)
+      .slice(0, 10)
       .map((row) => ({
         ...row,
         title: featureById.get(row.featureId)?.title || `Feature #${row.featureId}`,
@@ -865,7 +855,7 @@ function StandUpStatsView({ items, sprint, featureById, onSelectPerson }) {
                   <path d="M5 0L10 6H0L5 0Z" />
                 </svg>
                 <span className="mt-0.5 rounded bg-foreground px-1.5 py-0.5 text-[10.5px] leading-none font-medium whitespace-nowrap text-background tabular-nums shadow-xs">
-                  {sprintTiming.remainingPct}% days left ({sprintTiming.remainingDays}d)
+                  {sprintTiming.remainingPct}% workdays left ({sprintTiming.remainingDays}d)
                 </span>
               </div>
             )}

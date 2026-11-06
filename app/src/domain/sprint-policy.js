@@ -36,3 +36,56 @@ export function columnKeyOf(item, data) {
   if (data.sprints.some((s) => s.path === item.iterationPath)) return item.iterationPath;
   return OTHER;
 }
+
+const DAY_MS = 86400000;
+
+/**
+ * Computes sprint progress and remaining days counting only working days (Mon–Fri, UTC),
+ * excluding weekends (Sat/Sun) from both the elapsed percentage and remaining day count.
+ */
+export function computeWorkingSprintTiming(sprint, nowMs = Date.now()) {
+  const startRaw = sprint?.start || sprint?.startDate;
+  const finishRaw = sprint?.finish || sprint?.finishDate;
+  if (!startRaw || !finishRaw) return null;
+
+  const startMs = Date.parse(startRaw);
+  const finishMs = Date.parse(finishRaw);
+  if (!Number.isFinite(startMs) || !Number.isFinite(finishMs) || finishMs < startMs) return null;
+
+  const firstDayStart = Date.UTC(
+    new Date(startMs).getUTCFullYear(),
+    new Date(startMs).getUTCMonth(),
+    new Date(startMs).getUTCDate(),
+  );
+  const lastDayStart = Date.UTC(
+    new Date(finishMs).getUTCFullYear(),
+    new Date(finishMs).getUTCMonth(),
+    new Date(finishMs).getUTCDate(),
+  );
+
+  let totalDays = 0;
+  let elapsedWorkMs = 0;
+  let remainingDays = 0;
+
+  for (let dayStart = firstDayStart; dayStart <= lastDayStart; dayStart += DAY_MS) {
+    const dow = new Date(dayStart).getUTCDay();
+    if (dow === 0 || dow === 6) continue; // skip Sunday (0) and Saturday (6)
+    totalDays += 1;
+    const dayEnd = dayStart + DAY_MS;
+    if (nowMs >= dayEnd) {
+      elapsedWorkMs += DAY_MS;
+    } else if (nowMs > dayStart) {
+      elapsedWorkMs += nowMs - dayStart;
+      remainingDays += 1;
+    } else {
+      remainingDays += 1;
+    }
+  }
+
+  if (totalDays === 0) return null;
+  const totalWorkMs = totalDays * DAY_MS;
+  const elapsedPct = Math.min(100, Math.max(0, Math.round((elapsedWorkMs / totalWorkMs) * 100)));
+  const remainingPct = 100 - elapsedPct;
+
+  return { totalDays, elapsedPct, remainingPct, remainingDays };
+}
