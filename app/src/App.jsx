@@ -696,11 +696,6 @@ export default function App() {
                 {progress?.detail || progress?.title}
               </span>
             )}
-            {!mockEnabled && (
-              <span className="hidden text-xs text-muted-foreground md:inline">
-                {auth?.user ? `${auth.user} · ${auth.method === 'device-code' ? 'device code' : 'Azure CLI'}` : progress?.detail || 'Connecting to SAN SA…'}
-              </span>
-            )}
             {detailData && (
               <TicketSearch
                 data={detailData}
@@ -716,15 +711,14 @@ export default function App() {
               />
             )}
             <Button
-              size="sm"
-              variant="outline"
+              size="icon-sm"
+              variant="ghost"
               onClick={() => (mockEnabled ? onMockMode(mockPreset) : load())}
               disabled={!auth || loading}
               aria-label="Refresh from Azure DevOps"
-              title={mockEnabled ? 'Reset mock sandbox data' : data ? `Synced ${new Date(data.generatedAt).toLocaleTimeString()}` : undefined}
+              title={mockEnabled ? 'Reset mock sandbox data' : data ? `Refresh · Synced ${new Date(data.generatedAt).toLocaleTimeString()}` : 'Refresh'}
             >
               <RefreshCw className={!auth || loading ? 'animate-spin' : ''} />
-              {mockEnabled ? 'Reset mock' : 'Refresh'}
             </Button>
             <ThemeToggle />
           </div>
@@ -746,7 +740,7 @@ export default function App() {
               <TabsContent value="plan" forceMount className="h-full min-h-0 data-[state=inactive]:hidden">
                 <PlanView {...viewProps} items={sprintItems} />
               </TabsContent>
-              <TabsContent value="standup" forceMount className="h-full min-h-0 data-[state=inactive]:hidden">
+              <TabsContent value="standup" forceMount className="flex h-full min-h-0 flex-col data-[state=inactive]:hidden">
                 <StandUpView
                   data={data}
                   standup={standup}

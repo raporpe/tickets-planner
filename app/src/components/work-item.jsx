@@ -177,7 +177,10 @@ export function SprintSelect({ item, data, onChange, disabled, className }) {
             <SelectLabel>{canBeInSprint(item.type) ? 'Sprints' : 'Sprints (Tasks and Bugs only)'}</SelectLabel>
             {data.sprints.map((s) => (
               <SelectItem key={s.path} value={s.path} disabled={!canBeInSprint(item.type) && s.path !== item.iterationPath}>
-                {s.name} <span className="text-muted-foreground">· {s.timeFrame}</span>
+                {s.name}{' '}
+                <span className={s.timeFrame === 'current' ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
+                  · {s.timeFrame}
+                </span>
               </SelectItem>
             ))}
           </SelectGroup>
